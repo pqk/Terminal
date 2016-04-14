@@ -1,0 +1,133 @@
+/*useful code*/
+data view=<data view name>;
+describe;run;
+
+options sortdup=logcial;/*can improve performance by first processing DROP/KEEP option then sorts data*/
+options cpucount=actual;/*request to use number of actual physical CPU available*/
+
+proc sort data=<dataset> presorted; /*if dataset already sorted by specified BY var then PROC SORT will execut 
+but sort function not performed*/
+
+proc contents data=<dataset> centiles;run;
+proc datasets; contents data=<dataset> centiles;quit;
+
+proc datasets lib=<> nolist;/*rename var w/i dataset*/
+modify <dataset1>;
+rename oldvar1=newvar1 oldvar2=newvar2;
+format var1 <$name>;
+quit;
+
+proc datasets lib=<> nolist;
+change olddataset1=newdataset1;quit;/*change dataset name*/
+delete dataset1;quit;
+
+
+
+proc datasets lib=<oldlibname> nolist;/*copy a datafile from one lib to another*/
+copy out=<newlibname>;
+select <datafilename>;quit;
+
+
+/*Exploratory*/
+proc sql;
+create table SBNP_Metadata as
+select memname,nobs,nvar,crdate
+from dictionary.tables
+where libname='L5' and substr(memname,1,4)='SBNP';
+quit;
+
+
+proc datasets lib=work kill memtype=data;/*dump all data files from work*/
+run;
+quit;
+
+
+
+proc sql; /*add dummy variable into dataset with null value(ex. assumes num var)*/
+insert into <dataset name>(var1)
+values(.);
+quit;
+
+
+ /*The LIKE operator in a WHERE clause matches patterns in words. 
+ To get the equivalent result in an IF statement, the '=:' operator can be used. 
+ This matches patterns that occur at the beginning of a string.*/
+
+data test;
+input name $;
+cards;
+John
+Diana
+Diane
+Sally
+Doug
+David
+;
+run;
+
+data test;
+set test;
+if name =: 'D';
+run;
+
+proc print;
+run;
+
+/*The CONTAINS operator in a WHERE clause checks for a character string within a value. 
+To get the equivalent result in an IF statement, the INDEX function can be used.*/
+
+data test;
+set test;
+if index(name,'ian') ge 1;
+run;
+
+proc print;
+run;
+/****/
+
+
+/*Dictionary Tables*/
+proc sql;
+   title 'Tables That Contain xxx variable';
+create table SBNP_Metadata as
+select memname,nobs,nvar,crdate
+from dictionary.tables
+where libname='L5' and substr(memname,1,4)='SBNP';
+quit;
+
+
+proc sql;
+create table Where_CYYMM199_1 as
+   select libname, memname, name,nobs,filesize
+   from dictionary.columns
+   where upcase(name) like 'C____199' and libname='RISKLIB'; 
+quit; 
+
+/***/
+
+
+/*** Looping set statement ***/
+%let a=1;
+%let b=12;
+
+%macro Where_woflag;
+data Where_CYYMM199;
+set 
+	%do i=&a %to &b;
+	Where_CYYMM199_&i
+	%end;
+;
+run;
+%mend Where_woflag;
+%Where_woflag
+
+/***/
+
+/*** Proc export base default ***/
+proc export data = libname.inputfilename
+OUTFILE= "~/outputfilename.csv"
+dbms = csv replace ;
+run ;
+
+/***/
+
