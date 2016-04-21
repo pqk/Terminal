@@ -1,0 +1,65 @@
+<<<<<<<   shell> Prompt  >>>>>>>>
+mysql -u root -p
+
+<<<<<<<   mysql> Prompt  >>>>>>>>
+
+/*pg 257 doesn't require ;*/
+quit or /q
+
+select * from mysql.user;
+select version(), current_date;
+
+/*as a calculator*/
+
+select sin(PI()/4), (4+1)*5;
+
+/*will work?>> select sin(PI()/4) as SINWAVE,(4+1)*5 as Number; */ 
+
+/*pg 258 multiple statements per line*/
+
+select version(); select now();
+
+/*multiple lines per statement*/
+
+select
+User()
+,
+current_date();
+
+/*cancels out of a query*/
+\c
+
+
+/*pg259 if SQL indicates a missing "'" by returning a "'>" instead of executing then
+  use following to exit query*/
+'\c
+
+/*or if missing """ then "\c , thereby closing string and closing */
+
+show databases; /*ie librarys in SAS speak */
+
+
+/*pg260 USE, like QUIT, does not require a semicolon.*/
+use test /*where test is the name of the database*/
+
+/*pg261 allows you to see the currently selected database*/
+select database();
+
+create database menagerie;
+use menageria
+
+show tables;  /*ie datasets*/
+describe <table_name>
+
+/* Create table example pg262*/
+create table pet (name varchar(20), owner varchar(29),species varchar(20),sex char(1),birth date,death date);
+
+describe pet;
+
+/*Pg263 load data into table form csv*/
+load data local infile "/path/pet.txt" into table pet lines terminated by 'r/n/';
+
+insert into pet
+values('Puffball','Diane','hamster','f','1993-03-30',null);
+
+
