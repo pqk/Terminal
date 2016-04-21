@@ -37,7 +37,7 @@ current_date();
 /*or if missing """ then "\c , thereby closing string and closing */
 
 show databases; /*ie librarys in SAS speak */
-
+shows tables; /*shows all tables w/i a db*/
 
 /*pg260 USE, like QUIT, does not require a semicolon.*/
 use test /*where test is the name of the database*/
