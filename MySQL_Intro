@@ -57,9 +57,24 @@ create table pet (name varchar(20), owner varchar(29),species varchar(20),sex ch
 describe pet;
 
 /*Pg263 load data into table form csv*/
+/*LOCAL keyword affects where the file is expected to be found*/
+/*If its specified, the file is read by the client program on the client host and sent to the server*/
+/*to find file directory of database >>SHOW VARIABLES WHERE Variable_Name LIKE "%dir";
+-OR- SHOW VARIABLES WHERE Variable_Name = "datadir";*/
+
 load data local infile "/path/pet.txt" into table pet lines terminated by 'r/n/';
+
+/*opt2*/
+load data local infile "/path/pet.txt" into table pet lines terminated by 'n/';
+/*and delete /n from txt file*/
+
 
 insert into pet
 values('Puffball','Diane','hamster','f','1993-03-30',null);
+
+
+/*like SAS drop used to delete tables, BUT also databases*/
+drop table test1;
+drop database test_db;
 
 
