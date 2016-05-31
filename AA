@@ -1,0 +1,57 @@
+libname home "~/";
+
+data ID1_Table;
+infile '~/ID1_Table.csv' delimiter = ',' MISSOVER DSD lrecl=32767 firstobs=2;
+length Num1 3.;
+informat User_ID1 best32. dummy1 $3.;
+input  User_ID1 dummy1 $;
+Num1=_n_;
+run;
+
+data ID2_Table;
+infile '~/ID2_Table.csv' delimiter = ',' MISSOVER DSD lrecl=32767 firstobs=2;
+length Num2 3.;
+informat User_ID2 best32. dummy2 $3.;
+input  User_ID2 dummy2 $;
+Num2=_n_;
+run;
+
+
+proc sql;
+create table ID1_ID2 as
+select *
+from ID1_Table as t1 left join ID2_Table as t2 on t1.User_ID1=t2.User_ID2
+order by t1.Num1;
+quit;
+
+/**/
+proc sql;
+create table ID1_ID2xy as
+select coalesce(t1.User_ID1,t2.User_ID2) as User_ID1,case
+	when missing(t2.User_ID2) then 0
+	else 1
+	end as Result
+from ID1_Table as t1 left join ID2_Table as t2 on t1.User_ID1=t2.User_ID2
+order by t1.Num1;
+quit;
+/**/
+
+proc sql;
+create table ID1_ID2x as
+select t1.User_ID1,case
+	when missing(t2.User_ID2) then 0
+	else 1
+	end as Result
+from ID1_Table as t1 left join ID2_Table as t2 on t1.User_ID1=t2.User_ID2
+group by User_ID1
+order by t1.Num1;
+quit;
+
+/**/
+proc sql;
+create table ID1_ID2x as
+select t1.User_ID1,min(case when missing(t2.User_ID2) then 0 else 1 end) as Result
+from ID1_Table as t1 left join ID2_Table as t2 on t1.User_ID1=t2.User_ID2
+group by t1.User_ID1, Result
+order by t1.Num1;
+quit;
