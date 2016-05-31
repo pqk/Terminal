@@ -55,3 +55,9 @@ from ID1_Table as t1 left join ID2_Table as t2 on t1.User_ID1=t2.User_ID2
 group by t1.User_ID1, Result
 order by t1.Num1;
 quit;
+
+
+/* Below Works in MySQL to insert var that counts obs */ /*
+select @rownum:=0 from bowlers; /*must reset counter to 0 */ 
+select *, @rownum:=@rownum + 1 as Num
+from bowlers; */
