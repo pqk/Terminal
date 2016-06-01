@@ -1,5 +1,6 @@
 libname home "~/";
 
+/***** CSV *****/
 data ID1_Table;
 infile '~/ID1_Table.csv' delimiter = ',' MISSOVER DSD lrecl=32767 firstobs=2;
 length Num1 3.;
@@ -15,8 +16,44 @@ informat User_ID2 best32. dummy2 $3.;
 input  User_ID2 dummy2 $;
 Num2=_n_;
 run;
+/********/
+
+/***** Direct Input *****/
+data ID1_Table;
+infile datalines;
+length Num1 3.;
+Num1=_n_;
+input  User_ID1 @@;
+datalines;
+6 2 41 76 87 57 94 96 23 38 19 16 33 13 7 19 72 97 55 32 14 96 82 3 62 25 10 9 23 88
+;
+run;
+
+data ID2_Table;
+infile datalines;
+length Num2 3.;
+Num2=_n_;
+input  User_ID2 @@;
+datalines;
+7 19 64 24 41 40 36 25 25 42 80 33 25 91 48 100 21 87 75 4 86 17 4 71 38 32 84 33 50 14
+;
+run;
+/********/
 
 
+/*WINNER*/
+proc sql;
+create table ID1_ID2 as
+select distinct t1.Num1,t1.User_ID1,case
+	when missing(t2.User_ID2) then 0
+	else 1
+	end as Result
+from ID1_Table as t1 left join ID2_Table as t2 on t1.User_ID1=t2.User_ID2;
+quit;
+
+
+
+/*** Other **/
 proc sql;
 create table ID1_ID2 as
 select *
@@ -55,6 +92,7 @@ from ID1_Table as t1 left join ID2_Table as t2 on t1.User_ID1=t2.User_ID2
 group by t1.User_ID1, Result
 order by t1.Num1;
 quit;
+/**********/
 
 
 /* Below Works in MySQL to insert var that counts obs */ /*
