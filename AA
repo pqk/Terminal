@@ -99,3 +99,45 @@ quit;
 select @rownum:=0 from bowlers; /*must reset counter to 0 */ 
 select *, @rownum:=@rownum + 1 as Num
 from bowlers; */
+
+
+use mydb;
+create table ID1_Table(	Num1 INT NOT NULL AUTO_INCREMENT,
+			User_ID1 INT NOT NULL
+			PRIMARY KEY(User_ID1));
+insert into ID1_Table(User_ID1) 
+Values
+(6),(2),(41),(76),(87),(57),(94),(96),(23),(38),(19),(16),(33),(13),(47),(19),(72),(97),(55),(32),(14),(96),(82),(3),(62),(25),(10),(9),(23),(88);
+
+
+create table ID2_Table(	Num2 INT NOT NULL AUTO_INCREMENT,
+			User_ID2 INT NOT NULL
+			PRIMARY KEY(User_ID2));
+insert into ID2_Table(User_ID2) 
+Values
+(7),(19),(64),(24),(41),(40),(36),(25),(25),(42),(80),(33),(25),(91),(48),(100),(21),(87),(75),(4),(86),(17),(4),(71),(38),(32),(84),(33),(50),(14);
+
+/** Ex1 **/
+select distinct Num1,User_ID1,case t2.User_ID2
+	when IS NULL then 0
+	else 1
+	end as Result
+from ID1_Table as t1 left join ID2_Table as t2
+	on t1.User_ID1=t2.User_ID2;
+
+alter table ID1_Table DROP COLUMN Num1;
+
+
+/** Ex2 **/
+select *, @rownum:=@rownum + 1 as Num from User_ID1;
+
+select distinct Num,User_ID1,case t2.User_ID2
+	when IS NULL then 0
+	else 1
+	end as Result
+from ID1_Table as t1 left join ID2_Table as t2
+	on t1.User_ID1=t2.User_ID2;
+
+alter table ID1_Table DROP COLUMN Num;
+
+
