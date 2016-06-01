@@ -117,7 +117,7 @@ insert into ID2_Table(User_ID2)
 Values
 (7),(19),(64),(24),(41),(40),(36),(25),(25),(42),(80),(33),(25),(91),(48),(100),(21),(87),(75),(4),(86),(17),(4),(71),(38),(32),(84),(33),(50),(14);
 
-/** Ex1 **/
+/** Ex1 ID_Compare_v1**/
 select distinct Num1,User_ID1,case t2.User_ID2
 	when IS NULL then 0
 	else 1
@@ -140,4 +140,87 @@ from ID1_Table as t1 left join ID2_Table as t2
 
 alter table ID1_Table DROP COLUMN Num;
 
+/******  NEW ******/
+use mydb;
 
+drop table IF EXISTS ID1_Table;
+create table ID1_Table(	
+			Num1 INT NOT NULL auto_increment,
+			User_ID1 INT NOT NULL,
+            PRIMARY KEY(Num1));
+insert into ID1_Table(User_ID1) 
+Values
+(6),(2),(41),(76),(87),(57),(94),(96),(23),(38),(19),(16),(33),(13),(47),
+(19),(72),(97),(55),(32),(14),(96),(82),(3),(62),(25),(10),(9),(23),(88);
+select * from ID1_Table;
+
+drop table IF EXISTS ID2_Table;
+create table ID2_Table(	
+			Num2 INT NOT NULL auto_increment,
+			User_ID2 INT NOT NULL,
+            PRIMARY KEY(Num2));
+insert into ID2_Table(User_ID2) 
+Values
+(7),(19),(64),(24),(41),(40),(36),(25),(25),(42),(80),(33),(25),(91),(48),
+(100),(21),(87),(75),(4),(86),(17),(4),(71),(38),(32),(84),(33),(50),(14);
+select * from ID2_Table;
+
+select distinct Num1,User_ID1,case
+	when isnull(t2.User_ID2) then 0
+	else 1
+	end as Result
+from ID1_Table as t1 left join ID2_Table as t2
+	on t1.User_ID1=t2.User_ID2
+order by Num1;
+
+
+/***** ID_Compare_v2 *****/
+
+use mydb;
+create table /*IF NOT EXISTS*/ ID1_Table(	
+			Num1 INT NOT NULL default 0,
+			User_ID1 INT NOT NULL, 
+            PRIMARY KEY(User_ID1));
+
+insert ignore into ID1_Table(User_ID1) 
+Values
+(6),(2),(41),(76),(87),(57),(94),(96),(23),(38),(19),(16),(33),(13),(47),
+(19),(72),(97),(55),(32),(14),(96),(82),(3),(62),(25),(10),(9),(23),(88);
+
+drop table IF EXISTS ID1_Table;
+create table /*IF NOT EXISTS*/ ID1_Table(	
+			Num1 INT NOT NULL auto_increment,
+			User_ID1 INT NOT NULL,
+            PRIMARY KEY(Num1));
+insert into ID1_Table(User_ID1) 
+Values
+(6),(2),(41),(76),(87),(57),(94),(96),(23),(38),(19),(16),(33),(13),(47),
+(19),(72),(97),(55),(32),(14),(96),(82),(3),(62),(25),(10),(9),(23),(88);
+select * from ID1_Table;
+
+alter table ID1_Table drop primary key, change Num1 Num1 INT;
+alter ignore table ID1_Table add primary key(User_ID1);
+select * from ID1_Table;
+
+drop table IF EXISTS ID2_Table;
+create table /*IF NOT EXISTS*/ ID2_Table(	
+			Num2 INT NOT NULL auto_increment,
+			User_ID2 INT NOT NULL,
+            PRIMARY KEY(Num2));
+insert into ID2_Table(User_ID2) 
+Values
+(7),(19),(64),(24),(41),(40),(36),(25),(25),(42),(80),(33),(25),(91),(48),
+(100),(21),(87),(75),(4),(86),(17),(4),(71),(38),(32),(84),(33),(50),(14);
+select * from ID2_Table;
+
+select distinct Num1,User_ID1,case
+	when isnull(t2.User_ID2) then 0
+	else 1
+	end as Result
+from ID1_Table as t1 left join ID2_Table as t2
+	on t1.User_ID1=t2.User_ID2
+order by Num1;
+
+
+
+            
