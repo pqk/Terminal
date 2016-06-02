@@ -1,0 +1,97 @@
+use mydb;
+
+create table customer_order_items(
+			order_item_key INT NOT NULL AUTO_INCREMENT,
+			order_id INT,
+			order_date DATE,
+			customer_id VARCHAR(4),
+			product_id varchar(5),
+			quantity INT,
+			price INT,		
+			PRIMARY KEY(order_item));
+
+insert into customer_order_items(order_id,order_date,customer_id,product_id,quantity,price)		
+Values
+(1124,'2014-01-05','SN78','ARTL',24,800),
+(1145,'2012-02-21','FG76','GVND',2,880),
+(1180,'2012-04-07','TH60','EEEE',1,360),
+(1265,'2014-11-15','ZM27','KFIE',24,560),
+(4121,'2012-05-01','SN78','SLJD',21,1680),
+(6854,'2014-09-19','FG76','QERT',1,1250),
+(1444,'2014-02-04','ZM27','OPOP',4,910),
+(3555,'2014-02-04','SN78','YUJR',12,1660),
+(8000,'2013-09-22','FG76','ZXMS',4,1000),
+(4568,'2012-12-18','OP68','AWLR',1,1630),
+(4536,'2013-03-13','SN78','MCVN',19,1100),
+(1111,'2013-03-20','ZM27','FTGG',4,710),
+(1001,'2013-07-27','FG76','QWVC',19,1750),
+(7145,'2013-11-02','AA41','LKJS',1,2000),
+(3687,'2013-06-29','ZM27','XSWE',25,1340),
+(4674,'2014-01-21','SN78','ZPQM',11,1650),
+(7618,'2012-10-24','FN30','TNVH',1,920),
+(8894,'2013-01-24','QO60','EICM',7,1300),
+(7334,'2012-11-07','FG76','ELAI',1,1990),
+(2558,'2012-02-15','ZM27','VOKW',9,1660);
+
+create table customers(	customer_id VARCHAR(4),
+			customer_name VARCHAR(20),
+			customer_address VARCHAR(60),
+			customer_e-mail VARCHAR(60),
+			customer_phone VARCHAR(20),
+			PRIMARY KEY(customer_id));
+
+insert into customers(customer_id,customer_name,customer_address,customer_email,customer_phone)
+Values
+('SN78','Paul','125 Mohawk Drive','Paul@mail.com','999-999-9999'),
+('FG76','Bill','23 Lupine Court','Bill@mail.com','466-168-1406'),
+('TH60','Samantha','1 One Street','Samantha@mail.com','762-215-8600'),
+('ZM27','Robert','77 Luck Way','Robert@mail.com','367-943-4453'),
+('OP68','Greg','1234 Main Street','Greg@mail.com','292-724-9290'),
+('AA41','Liann','17 Alba Road','Liann@mail.com','382-564-5965'),
+('FN30','Hank','14 Natnuckt Way','Hank@mail.com','501-923-3063'),
+('QO60','Yuvette','78 Blacken Court','Yuvette@mail.com','433-572-8217'),
+('GJ69','James','69 Hooper Way','James@mail.com','498-422-1715'),
+('ER23','Walton','13 Gallop Road','Walton@mail.com','570-670-5100'),
+('TR35','Theresa','90 West East Street','Theresa@mail.com','634-865-9807'),
+('TT78','Blake','88 5th Street','Blake@mail.com','805-966-9687'),
+('OO35','Pablo','39 Wacko Way','Pablo@mail.com','171-910-8715'),
+('EE48','Quincy','66 Devils Way','Quincy@mail.com','755-118-7971'),
+('VV10','Zoey','37 Cyil Road','Zoey@mail.com','760-913-7777'),
+('QQ66','Adam','25 Fifty Road','Adam@mail.com','525-698-1075'),
+('LL51','Clint','122 Highway 97','Clint@mail.com','765-744-3967'),
+('EE11','Ray','456 Yugert Road','Ray@mail.com','742-141-1883'),
+('VV62','Kurt','11 Powamat Circle','Kurt@mail.com','625-684-1703'),
+('ZZ26','Nathan','90 Upton Court','Nathan@mail.com','812-178-2287');
+
+
+
+
+/* Total revenue in 2013 */
+select year(order_date) as Year, format(sum(quanity*price),0) as Revenue /* incorporate round(value,0) ? */
+from customer_order_items
+where calculated Year=2013
+group by Year;
+	
+/* Total revenue by month in 2013 */
+select Month(order_date) as Month, format(sum(quanity*price),0) as Revenue
+from customer_order_items
+where cast(order_date as date) between '2013-01-01' and '2013-12-31'
+group by Month;
+
+/*
+http://stackoverflow.com/questions/8354638/sql-between-dates-including-start-and-end-dates
+*/
+
+/* all Customer ID's and their 2013 revenue, even if no purchases */
+select t1.customer_id, order_date, format(sum(quanity*price),0) as Revenue
+from customers as t1 left join customer_order_items as t2 on t1.customer_id=t2.customer_id
+where cast(order_date as date) between '2013-01-01' and '2013-12-31'
+group by t1.customer_id;
+
+/* rank the previous customers based on their 2013 revenue (high to low). */
+select t1.customer_id, order_date, format(sum(quanity*price),0) as Revenue
+from customers as t1 left join customer_order_items as t2 on t1.customer_id=t2.customer_id
+where cast(order_date as date) between '2013-01-01' and '2013-12-31'
+group by t1.customer_id
+ordery by Revenue DESC;
+
