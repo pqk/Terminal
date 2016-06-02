@@ -171,7 +171,7 @@ select t1.User_ID1,case
 	end as Result
 from ID1_Table as t1 left join ID2_Table as t2
 	on t1.User_ID1=t2.User_ID2
-order by User_ID1;
+order by User_ID1; /*Dont need order by here--Confirm*/
 
 /*********************/
 /*** ID_Compare_v2 ***/
