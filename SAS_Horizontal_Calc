@@ -1,0 +1,169 @@
+/*data set-up*/
+data dummy_data;
+infile datalines;
+input Dummy_No :$4. YYMM :3. Dummy_AMT :8.;
+datalines;
+L258 1412 1603254
+L970 1412 1841004
+L204 1303 856111
+L436 1304 466772
+L907 1309 239474
+L937 1312 447899
+L378 1402 158175
+L374 1403 219154
+L518 1405 9632
+L125 1405 570151
+L878 1407 311105
+L100 1410 145382
+L308 1305 35378
+L885 1301 288
+L885 1412 319120
+L951 1303 1601100
+L951 1305 -553469
+L393 1304 1013118
+L393 1305 -500000
+L966 1301 1423113
+L966 1305 -322324
+L176 1303 1509247
+L176 1305 -10119
+L237 1305 959494
+L237 1306 -388603
+L396 1305 999475
+L396 1307 -94000
+L446 1305 1102645
+L446 1307 -939000
+L173 1305 1153554
+L173 1407 -1100000
+L368 1305 1351996
+L368 1308 -684448
+L962 1304 279
+L962 1309 554
+L962 1310 143
+L962 1404 996
+L962 1407 420
+L962 1410 625
+L149 1303 4
+L149 1304 9
+L149 1306 109
+L149 1308 46
+L335 1305 235
+L335 1311 644
+L335 1411 50000
+L154 1409 1739241
+L154 1411 -1739241
+L154 1412 939241
+L664 1402 499530
+L664 1411 -499530
+L664 1412 488012
+L422 1407 967
+L422 1409 522
+L422 1411 656
+L879 1405 395525
+L879 1406 -395525
+L879 1407 221915
+L486 1303 12
+L486 1309 73
+L486 1401 385
+L348 1307 2764034
+L348 1308 -2764034
+L348 1309 2650900
+L782 1304 210846
+L782 1308 -210846
+L782 1309 23667
+L659 1306 160132
+L659 1307 -160132
+L659 1308 177003
+L847 1304 528688
+L847 1306 -528688
+L847 1307 497076
+L897 1305 2179490
+L897 1404 -175688
+L641 1305 1691781
+L641 1307 -728290
+L354 1305 1627853
+L354 1307 -514903
+L311 1305 1573296
+L311 1312 -400000
+L832 1305 368
+L832 1310 533
+;
+
+proc sort data=dummy_data;by Dummy_No YYMM;run;
+
+proc transpose data=dummy_data out=dummy_data_t(drop=_NAME_);
+by Dummy_No;
+var Dummy_AMT;
+id YYMM;run;
+
+/*realign variables */
+proc sql;
+create table dummy_data_t as
+select	Dummy_No,
+		_1301, . as _1302,_1303,_1304,_1305,_1306,_1307,_1308,_1309,_1310,_1311,_1312,
+		_1401,_1402,_1403,_1404,_1405,_1406,_1407,. as _1408,_1409,_1410,_1411,_1412
+from dummy_data_t;
+quit;
+/********/
+
+/****Create dataset and subsequent macvars for use in below arrays****/
+data Temp1(keep=Elements);
+set dummy_data_t(drop=Dummy_No);
+Length Elements $5;
+array trnp(*) _numeric_;
+do i=1 to dim(trnp);
+	if _n_=1 then do;
+	Elements=vname(trnp[i]);
+	output;
+	end;
+end;
+run;
+
+proc sql noprint;
+select count(elements) INTO:Obs
+from Temp1;quit;
+
+proc sql noprint;
+select Elements INTO :Mo1 - :Mo999
+from Temp1;
+/*drop table Temp1;*/ quit;
+
+data _null_;
+call symput('obs',strip(&obs));run; /*for some reason in this instance obs macvar created by SQL has leading spaces*/
+
+
+%put &mo1 &&Mo&obs;
+
+%let ObsLess1=%eval(&obs-1);
+
+%put &mo1 &&Mo&obs &ObsLess1;
+/********/
+
+
+/*Find date of first AMT and sum*/
+data Sum_Amt(keep=Dummy_no AMT_Sum AMT_YYMM);
+set dummy_data_t;
+Length AMT_YYMM $5.;
+
+array amt{*} &mo1 -- &&Mo&obs;
+if sum(of amt[*])=0 then delete;
+do i=1 to dim(amt);
+	if amt(i)=. or (amt(i)>=0 and amt(i)<10000) then amt(i)=0;/*0<amt<10000 is an adjustment to exclude small amounts*/
+	end;
+AMT_Sum=sum(of amt[*]);
+
+array comp{&ObsLess1} _temporary_;
+do j=1 to dim(comp);
+if amt(j)<amt(j+1) or amt(j)>amt(j+1) then do;
+	AMT_YYMM=strip(vname(of amt[j+1]));
+	output;
+	leave;
+	end;
+end;
+run;
+
+data Sum_Amt1(rename=(temp=AMT_YYMM));
+set Sum_Amt(where=(AMT_Sum>0));	/*excl. all but positive values */
+Temp=input(substr(AMT_YYMM,2,length(AMT_YYMM)-1),4.);
+drop AMT_YYMM;
+run;
+/***********/
