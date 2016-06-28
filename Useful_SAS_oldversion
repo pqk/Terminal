@@ -1,0 +1,740 @@
+/*useful code*/
+data view=<data view name>;
+describe;run;
+
+options sortdup=logcial;/*can improve performance by first processing DROP/KEEP option then sorts data*/
+options cpucount=actual;/*request to use number of actual physical CPU available*/
+
+proc sort data=<dataset> presorted; /*if dataset already sorted by specified BY var then PROC SORT will execut 
+but sort function not performed*/
+
+proc contents data=<dataset> centiles;run;
+proc datasets; contents data=<dataset> centiles;quit;
+
+proc datasets lib=<> nolist;/*rename var w/i dataset*/
+modify <dataset1>;
+rename oldvar1=newvar1 oldvar2=newvar2;
+format var1 <$name>;
+quit;
+
+proc datasets lib=<> nolist;
+change olddataset1=newdataset1;quit;/*change dataset name*/
+delete dataset1;quit;
+
+
+
+proc datasets lib=<oldlibname> nolist;/*copy a datafile from one lib to another*/
+copy out=<newlibname>;
+select <datafilename>;quit;
+
+
+/*Exploratory*/
+proc sql;
+create table SBNP_Metadata as
+select memname,nobs,nvar,crdate
+from dictionary.tables
+where libname='L5' and substr(memname,1,4)='SBNP';
+quit;
+
+
+proc datasets lib=work kill memtype=data;/*dump all data files from work*/
+run;
+quit;
+
+
+
+proc sql; /*add dummy variable into dataset with null value(ex. assumes num var)*/
+insert into <dataset name>(var1)
+values(.);
+quit;
+
+
+ /*The LIKE operator in a WHERE clause matches patterns in words. 
+ To get the equivalent result in an IF statement, the '=:' operator can be used. 
+ This matches patterns that occur at the beginning of a string.*/
+
+data test;
+input name $;
+cards;
+John
+Diana
+Diane
+Sally
+Doug
+David
+;
+run;
+
+data test;
+set test;
+if name =: 'D';
+run;
+
+proc print;
+run;
+
+/*The CONTAINS operator in a WHERE clause checks for a character string within a value. 
+To get the equivalent result in an IF statement, the INDEX function can be used.*/
+
+data test;
+set test;
+if index(name,'ian') ge 1;
+run;
+
+proc print;
+run;
+/****/
+
+
+/*Dictionary Tables*/
+proc sql;
+   title 'Tables That Contain xxx variable';
+create table SBNP_Metadata as
+select memname,nobs,nvar,crdate
+from dictionary.tables
+where libname='L5' and substr(memname,1,4)='SBNP';
+quit;
+
+
+proc sql;
+create table Where_CYYMM199_1 as
+   select libname, memname, name,nobs,filesize
+   from dictionary.columns
+   where upcase(name) like 'C____199' and libname='RISKLIB'; 
+quit; 
+
+/***/
+
+
+/*** Looping set statement ***/
+%let a=1;
+%let b=12;
+
+%macro Where_woflag;
+data Where_CYYMM199;
+set 
+	%do i=&a %to &b;
+	Where_CYYMM199_&i
+	%end;
+;
+run;
+%mend Where_woflag;
+%Where_woflag
+
+/***/
+
+/*** Proc export base default ***/
+proc export data = libname.inputfilename
+OUTFILE= "~/outputfilename.csv"
+dbms = csv replace ;
+run ;
+
+/***/
+
+
+/*** Example macro array and do loop code ***/
+
+/***** MT *****/
+%let	s_cut= 107 ; /*CHANGE 145*/
+%let	e_cut= 192 ; /*CHANGE 192*/
+
+%macro mymacro;
+
+%do i = &s_cut %to &e_cut ;
+
+	%let	j=%eval(&i-1) ;
+
+	data	cust (keep=serialno c003 ac28 portfolio book book1 lt eligible_flag passed_bucket gz_seg gz_seg1
+				 legal_flag irrl_balance irrl_flag gz_seg Sol);
+	merge	a	(in=t1)
+			b	(in = i keep =	serialno irrl_balance	)	/* 20130618追加 */
+			c(in = m	keep=serialno pl_irrl_balance	)
+
+			%if	&&yymm&i>=0809 %then	%do ;
+			c	(in = l keep=serialno			)
+			e	(in = f	keep=serialno se006		)
+			%end ;
+		;
+	by	serialno ;
+	if	t1 ;
+
+	
+	/***** PK Mods (201601) *****/
+	if substr(book,1,2)='PO' then book1='PO';
+		else if substr(book,1,2)='WO' then book1='WO';
+		else if substr(book,1,2)='OB' then book1='OB';
+		else book1=book;
+
+	if substr(gz_seg,1,3)='A-1' or gz_seg="R" then gz_seg1='A1R';
+		else if substr(gz_seg,1,3)='A-2' then gz_seg1='A2';
+		else if substr(gz_seg,1,3)='B-1' or substr(gz_seg,1,3)='B-2' then gz_seg1='B';
+		else gz_seg1=gz_seg;
+	
+	if book="WO" and passed_bucket in("10<=Year<11","11<=Year<12","12<=Year<13","13<=Year<14","14<=Year<15","15<=Year") then Book="WO10Y";
+	if book="CO" and passed_bucket in("10<=Year<11","11<=Year<12","12<=Year<13","13<=Year<14","14<=Year<15","15<=Year") then Book="CO10Y";
+	if book="NA" and passed_bucket in("10<=Year<11","11<=Year<12","12<=Year<13","13<=Year<14","14<=Year<15","15<=Year") then Book="NA10Y";
+
+	if Book in("PO10Y","WO10Y","CO10Y","NA10Y") then Sol=1;
+	else Sol=0;
+	
+	if legal_type=0 then lt="nonLI";
+	else if legal_type>2 then lt="LI";
+	else if legal_type<=2 and legal_type>0 then lt="BKD";
+	run;
+	
+	proc sort data=cust presorted;by serialno;run;
+	
+	data	cust;
+	merge cust(in=t1)
+		  home.WO_Flag_Master(keep=serialno Wo_Flag);
+	by serialno;
+	if t1;
+	run;
+	
+	
+/*** START PK MODs***/
+
+	data _null_;
+		a = mdy(%substr(&&yymm&i,3,2), 1, %substr(&&yymm&i,1,2));
+		b = put(intnx("month", a, 0, "end"), date9.);
+		call symput("eom", b);
+	run;
+
+	%put EOM = &eom;
+	
+	%if &i=104 %then %do;
+		data cust&&yymm&i (where=(Clsing_Flag=1)); /*Add Pool List Flag*/
+		merge home.poollist(in=t1) /*MUST have Pool List file*/
+				cust;
+		by serialno;
+		if t1 then Clsing_Flag=1;
+		else Clsing_flag=0;
+		
+		if portfolio="AF" then Clsing_Flag=1; /*Add AF to Pool List Flag*/
+		run;
+	%end;
+	
+	%if &i=105 %then %do;
+		data cust&&yymm&i; /*Add Pool List Flag*/
+		merge home.poollist(in=t1) /*MUST have Pool List file*/
+				cust;
+		by serialno;
+		if t1 then Clsing_Flag=1;
+		else Clsing_flag=0;
+		
+		if portfolio="AF" then Clsing_Flag=1; /*Add AF to Pool List Flag*/
+		run;
+		
+		proc sort data=cust&&yymm&i presorted;by serialno;run;
+		
+		data cust&&yymm&i;
+		merge home.cust0808 (in=t1 where=(Clsing_Flag=1) /*MUST have output 0808 in advance*/
+			keep=serialno portfolio book1 book gz_seg1 gz_seg passed_bucket lt legal_flag Clsing_Flag Sol
+			rename=(book1=bk10 book=bk0 gz_seg1=sg10 gz_seg=sg0 passed_bucket=pb0 lt=lt0 legal_flag=lf0 Sol=Sol0))
+			cust&&yymm&i(in=t2 where=(Clsing_Flag=1));
+		by serialno;
+		
+		/*subsetting code*/
+		array ay{4} $ _temporary_ ('WO','PO','CO','NA');
+		%do u=1 %to 4;
+			%do j=1 %to 4;
+				if bk10=ay{&u} and book1=ay{&j} /*and lt0=0 and lt1=0 and lf0=0 and lf1=0*/ and /*OLD SOL 2*/
+				sol0=1 and sol=1 then Status=ay{&u}||'_SOL>SOL_'||ay{&j};
+				
+				else if bk10=ay{&u} and book1=ay{&j} /*and lt0=0 and lt1=0 and lf0=0 and lf1=0*/ and /*NEW SOL 3*/
+				sol0=0 and sol=1 then Status=ay{&u}||'____>SOL_'||ay{&j};
+			%end;
+		%end;
+
+		array az{5} $ _temporary_ ('OB','WO','PO','CO','NA');
+		%do q=1 %to 5;
+			%do p=1 %to 5;
+				if 	bk10=az{&q} and book1=az{&p} and lt0="nonLI" and lt="nonLI" and lf0=0 and legal_flag=0 and /*ELIGIBLE 1*/
+				sol0=0 and sol=0 then Status=az{&q}||'____>____'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="LI" and lt="LI" and lf0=1 and legal_flag=1 and /*OLD LI 4*/
+				sol0=0 and sol=0 then Status=az{&q}||'__LI>LI__'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="nonLI" and lt="LI" and lf0=0 and legal_flag=1 and /*NEW LI 5*/
+				sol0=0 and sol=0 then Status=az{&q}||'____>LI__'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="nonLI" and lt="BKD" and lf0=0 and legal_flag=0 and /*NEW BKD 6*/
+				sol0=0 and sol=0 then Status=az{&q}||'____>BKD_'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="LI" and lt="BKD" and lf0=1 and legal_flag=0 and /*OLD LI > NEW BKD 7*/
+				sol0=0 and sol=0 then Status=az{&q}||'__LI>BKD_'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="BKD" and lt="LI" and lf0=0 and legal_flag=1 and /*OLD BKD > NEW LI 8*/
+				sol0=0 and sol=0 then Status=az{&q}||'_BKD>LI__'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="BKD" and lt="BKD" and lf0=0 and legal_flag=0 and /*OLD BKD 9*/
+				sol0=0 and sol=0 then Status=az{&q}||'_BKD>BKD_'||az{&p};
+			%end;
+		%end;
+
+		Status=strip(compress(status,' '));
+		if book1=substr(Status,1,2) and book1=substr(Status,12,2) and countc(Status,'_')=8 then Mstr_Status='EXIST';
+		else if book1^=substr(Status,1,2) and book1=substr(Status,12,2) and countc(Status,'_')<=8 then Mstr_Status='IN';
+		else Mstr_Status='OUT';
+
+		if missing(Status) then Mstr_Status='';
+		
+		run;
+		
+	%end;
+	
+	%let	v=%eval(&i-1) ;
+	%if &i>105 %then %do;
+		data cust&&yymm&i;
+		merge home.cust0809 (in=t1 keep=serialno Clsing_flag where=(Clsing_flag=1))/*MUST have output 0809 in advance*/
+			  cust(in=t2);
+		by serialno;
+		
+		if missing(c003) or missing(book) then c003="&eom"d; /*populate 32-62 null data serialno w/ correct date*/ 
+		if t1;
+		run;
+		
+		proc sort data=cust&&yymm&i presorted;by serialno;run;
+		
+		data cust&&yymm&i;
+		merge cust&&yymm&v(in=t1 where=(Clsing_Flag=1)
+			keep=serialno portfolio book1 book gz_seg1 gz_seg passed_bucket lt legal_flag Clsing_Flag Sol
+			rename=(book1=bk10 book=bk0 gz_seg1=sg10 gz_seg=sg0 passed_bucket=pb0 lt=lt0 legal_flag=lf0 Sol=Sol0))
+			cust&&yymm&i(in=t2 where=(Clsing_Flag=1));
+		by serialno;
+
+		/*subsetting code*/
+		array ay{4} $ _temporary_ ('WO','PO','CO','NA');
+		%do u=1 %to 4;
+			%do j=1 %to 4;
+				if bk10=ay{&u} and book1=ay{&j} /*and lt0=0 and lt1=0 and lf0=0 and lf1=0*/ and /*OLD SOL 2*/
+				sol0=1 and sol=1 then Status=ay{&u}||'_SOL>SOL_'||ay{&j};
+				
+				else if bk10=ay{&u} and book1=ay{&j} /*and lt0=0 and lt1=0 and lf0=0 and lf1=0*/ and /*NEW SOL 3*/
+				sol0=0 and sol=1 then Status=ay{&u}||'____>SOL_'||ay{&j};
+			%end;
+		%end;
+
+		array az{5} $ _temporary_ ('OB','WO','PO','CO','NA');
+		%do q=1 %to 5;
+			%do p=1 %to 5;
+				if 	bk10=az{&q} and book1=az{&p} and lt0="nonLI" and lt="nonLI" and lf0=0 and legal_flag=0 and /*ELIGIBLE 1*/
+				sol0=0 and sol=0 then Status=az{&q}||'____>____'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="LI" and lt="LI" and lf0=1 and legal_flag=1 and /*OLD LI 4*/
+				sol0=0 and sol=0 then Status=az{&q}||'__LI>LI__'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="nonLI" and lt="LI" and lf0=0 and legal_flag=1 and /*NEW LI 5*/
+				sol0=0 and sol=0 then Status=az{&q}||'____>LI__'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="nonLI" and lt="BKD" and lf0=0 and legal_flag=0 and /*NEW BKD 6*/
+				sol0=0 and sol=0 then Status=az{&q}||'____>BKD_'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="LI" and lt="BKD" and lf0=1 and legal_flag=0 and /*OLD LI > NEW BKD 7*/
+				sol0=0 and sol=0 then Status=az{&q}||'__LI>BKD_'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="BKD" and lt="LI" and lf0=0 and legal_flag=1 and /*OLD BKD > NEW LI 8*/
+				sol0=0 and sol=0 then Status=az{&q}||'_BKD>LI__'||az{&p};
+				
+				else if	bk10=az{&q} and book1=az{&p} and lt0="BKD" and lt="BKD" and lf0=0 and legal_flag=0 and /*OLD BKD 9*/
+				sol0=0 and sol=0 then Status=az{&q}||'_BKD>BKD_'||az{&p};
+			%end;
+		%end;
+
+		Status=strip(compress(status,' '));
+		if book1=substr(Status,1,2) and book1=substr(Status,12,2) and countc(Status,'_')=8 then Mstr_Status='EXIST';
+		else if book1^=substr(Status,1,2) and book1=substr(Status,12,2) and countc(Status,'_')<=8 then Mstr_Status='IN';
+		else Mstr_Status='OUT';
+
+		if missing(Status) then Mstr_Status='';
+		run;	
+	%end;
+
+	%if &i>=105 %then %do;
+	proc sql ;
+	create table home.W_elig_&&yymm&i as
+	select
+		c003 as YM format=YYMMDD10.,
+		portfolio,
+		gz_seg1,
+		gz_seg,
+		book1,
+		book,
+		Status,
+		Mstr_Status,
+		passed_bucket,
+		Clsing_flag,
+		irrl_flag,
+		legal_flag,
+		eligible_flag,
+		Wo_Flag,
+		count(serialno)			as count,
+		sum(irrl_balance/1000000)		as irrl_MM,
+		sum(ac28/1000000)		as mcs_MM
+	from
+		cust&&yymm&i
+	group by
+		YM,
+		Clsing_flag,
+		portfolio,
+		gz_seg1,
+		gz_seg,
+		book1,
+		book,
+		Status,
+		Mstr_Status,
+		legal_flag,
+		eligible_flag,
+		Wo_Flag,
+		passed_bucket,
+		irrl_flag
+		;
+	quit ;
+	%end;
+
+/*Delete previous month file cust&&yymm&v*/
+	%if &i>105 %then %do;
+	proc sql;drop table cust&&yymm&v;quit;
+	%end;
+%end ;
+
+
+%mend mymacro;
+%mymacro
+
+/***/
+
+
+/*** date macrovar set-up ***/
+data _null_ ;
+  s_cut = intck('MONTH','31Jan2000'd,today()) ;
+  call symput('s_cut',compress(s_cut));
+run;
+%put %nrstr(&s_cut =) &s_cut ;
+
+data _null_ ;
+  e_cut = intck('MONTH','31Jan2000'd,today()) ;
+  call symput('e_cut',compress(e_cut));
+run;
+%put %nrstr(&e_cut =) &e_cut ;
+
+
+/*** Initial Date ***/
+%let ST="01jan2000"d;
+data _null_ ;
+        call symput ("n",intck("month",&ST-1,intnx('day',intnx('month',today(),0),-1)));
+run;
+/***** Check *****/
+%put %nrstr(&n =) &n ;
+data _null_;
+	%macro YM1 ;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&ST-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%mend ;
+	%YM1 ;
+run;
+%macro YM2 ;
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i;
+	%end ;
+%mend;
+%YM2 ;
+
+/***/
+
+%let	s_cut= 108 ; /*CHANGE 0812*/
+%let	e_cut= 192 ; /*CHANGE 132 0912  192 1512*/
+
+%macro Elig_Vintage;
+%do q=0 %to 1; /*7yrs: 0812-1512*/
+
+%let s_cut=%eval(&s_cut+(12*&q));
+
+	%do i = &s_cut %to &e_cut %by 12;
+
+		/*****  Create Monthly LI/BKO/SOL File  *****/
+		%if &i>&s_cut %then %do;
+			%let mid_cut=%eval(&i-11);
+			%do p=&mid_cut %to &i %by 1;
+				data LI&&yymm&p(keep=serialno li003 Sol Lt);
+				merge cust&&yymm&s_cut(in=t1 keep=serialno model_elig where=(model_elig=1))
+						l2.LI&&yymm&p(in=t2 keep=serialno li003 li005 Book passed_bucket);
+				by serialno;
+				if t1 and t2;
+
+				/***** Book修正 *****/
+				if substr(book,1,2)="PO" and passed_bucket in("10<=Year<11","11<=Year<12","12<=Year<13","13<=Year<14","14<=Year<15","15<=Year") then Book="PO10Y";
+
+				if Book='PO10Y' then Sol=1;else Sol=0;
+
+				Length Lt $5;
+				if li005<=2 and li005>0 then Lt="BKD";
+				else if li005>2 then Lt="LI";
+
+				run;
+			%end;
+
+			data LI;
+			set
+				%do k=&mid_cut %to &i;
+				LI&&yymm&k
+				%end;
+			;
+			run;
+
+			proc sort data=LI;by serialno li003;run;
+
+			data LI;
+			set LI;
+			by serialno;
+			if first.serialno;run; /*重複の場合、早い方で特定*/
+		
+			%do y=&mid_cut %to &i;
+				proc datasets lib=work nolist;
+				delete LI&&yymm&y;
+				quit;
+			%end;
+		%end;
+
+
+		data cust; 
+		merge home.poollist(in=t1) /*事前にpoollistファイルの作成は必要*/
+			  l1.cust&&yymm&i;
+		by serialno;
+		if t1 then Clsing_Flag=1;/*Add Pool List Flag*/
+		else Clsing_flag=0;
+		
+		if portfolio="AF" then Clsing_Flag=1; /*AFをpool listに追加*/
+		run;
+		
+		proc sort data=cust presorted;by serialno;run;
+			
+			
+		data	cust (keep=serialno c003 ac28 portfolio book book1 lt eligible_flag passed_bucket gz_seg gz_seg1 gz_seg2
+					 legal_flag irrl_balance irrl_flag irrl_flag1 Sol Model_Elig WO_Flag);
+		merge	cust	(in=t1)
+				master.irrl_balance&&yymm&i	(in =t2 keep =	serialno irrl_balance	)
+				home.WO_Flag_Master(keep=serialno Wo_Flag)/*事前にWO Flagァイル(CYYMM199)の作成は必要*/
+				%if &i>&s_cut %then %do;
+				LI (keep=serialno Sol Lt)
+				%end;
+				; 
+		by	serialno ;
+		if	t1;
+
+		Length irrl_flag1 $7;
+		
+		/*****  IRRL Flag  *****/
+		if	irrl_balance<0	and irrl_balance ne .	then	irrl_flag ='-';
+		else if	irrl_balance=0	and irrl_balance ne .	then	irrl_flag ='0';
+		else if	irrl_balance>0	and irrl_balance ne .	then	irrl_flag ='+';
+		else							irrl_flag ='NA';
+
+		/***** Book簡略化 *****/
+		if substr(book,1,2)='PO' then book1='PO';
+			else if substr(book,1,2)='WO' then book1='WO';
+			else if substr(book,1,2)='OB' then book1='OB';
+			else book1=book;
+
+		/***** gz_seg簡略化 I *****/
+		if substr(gz_seg,1,3)='A-1' or gz_seg="R" then gz_seg1='A1R';
+			else if substr(gz_seg,1,3)='A-2' then gz_seg1='A2';
+			else if substr(gz_seg,1,3)='B-1' or substr(gz_seg,1,3)='B-2' then gz_seg1='B';
+			else gz_seg1=gz_seg;
+		
+		/***** gz_seg簡略化 II*****/
+		if gz_seg1='A1R' or gz_seg1='A2' then gz_seg2='A12R';
+		else if gz_seg1='B' or gz_seg1='C' then gz_seg2='BC';
+		else gz_seg2=gz_seg1;
+			
+		/***** Passed Bucket調整 *****/
+		if book="OB" then passed_bucket="0<=Year<1";
+		
+		/***** Book修正 *****/
+		if book="PO" and passed_bucket in("10<=Year<11","11<=Year<12","12<=Year<13","13<=Year<14","14<=Year<15","15<=Year") then Book="PO10Y";
+		else if book="WO" and passed_bucket in("10<=Year<11","11<=Year<12","12<=Year<13","13<=Year<14","14<=Year<15","15<=Year") then Book="WO10Y";
+
+		if Book="PO10Y" then Sol=1;	
+		else if missing(Sol) then Sol=0; /*LIファイルからのSolを上書きしない為missing()を利用*/
+		
+		Length Lt $5;
+		if legal_type=0 and missing(Lt) then Lt="nonLI";/*LIファイルからのLt(legal type)を上書きしない為missing()を利用*/
+		else if legal_type>2 and missing(Lt) then Lt="LI";
+		else if legal_type<=2 and legal_type>0 and missing(Lt) then Lt="BKD";
+		
+		/***** PO irrl(+) mcsバランスエラーの調整 *****/
+		if book1="PO" and irrl_flag ="+" then irrl_balance=0;
+		
+		/*Model Eligible*/
+		if portfolio In("AF","PL","WC","XS") and book in("OB","PO","WO","PO5Y") and gz_seg not in("New_W","W") and 
+		eligible_flag=1 and legal_flag=0 then Model_Elig=1;
+		else Model_Elig=0;
+		
+		/*****  IRRL Flag調整  *****/
+		if	irrl_balance<0	and irrl_balance ne .	then	irrl_flag1 ='IRRL<0';
+		else irrl_flag1 ='IRRL>=0';
+			
+		run;
+		
+	data _null_;
+	a = mdy(%substr(&&yymm&i,3,2), 1, %substr(&&yymm&i,1,2));
+	b = put(intnx("month", a, 0, "end"), date9.);
+	call symput("eom", b);
+
+	if &i=&s_cut then do;
+		call symput("Start_eom", b);
+		call symput("Start_eom1", put(intnx("month", a, 0, "end"), mmyyn4.));
+	end;
+	run;
+
+	%put Cut_date = &Start_eom;
+	%put EOM      = &eom;
+
+	%let	j=%eval(&i-12);
+	%let	test=%eval(&s_cut+12);
+		
+		%if &i=&s_cut %then %do;
+			data cust&&yymm&s_cut;
+			set cust;run;
+		
+			proc sql;
+			create table cust_out&&yymm&s_cut as
+			select  "&Start_eom" as Cut_date,
+					c003 as YM format=YYMMDD10.,
+					gz_seg2,irrl_flag1,book1,"00:@_&Start_eom1" as Status Length=15,Wo_Flag,
+					count(serialno) as CNT, 
+					sum(irrl_balance/1000000)	as irrl_MM,
+					sum(ac28/1000000)	as mcs_MM
+			from cust
+			where model_elig=1
+			group by Cut_date,YM,gz_seg2,irrl_flag1,book1,Status,Wo_Flag;
+			quit;
+		%end;
+		
+		%else %do;
+		
+			data cust&&yymm&i(drop=Stat);
+			merge cust&&yymm&s_cut(in=t1 where=(Model_Elig=1))
+				  cust(in=t2 keep=c003 serialno gz_seg2 book1 irrl_flag1 lt Sol
+							rename=(gz_seg2=gz1 book1=bk1 irrl_flag1=irrl1 lt=lt1 Sol=Sol1))
+				  
+				  %if &i>&test %then %do;
+				  cust&&yymm&j(in=t3 keep=serialno Status rename=(Status=Stat))		
+				  %end;
+					;
+			by serialno;
+			if t1;
+
+			Length Status $15;
+			
+			%if &i>&test %then %do; 
+			if Stat="07:STAY" then do;
+				if lt1='BKD' then Status='01:BKD';
+				else if lt1='LI' then Status='02:LI';
+				else if book1^=bk1 and Sol1=0 then Status="03:"||strip(bk1);
+				else if Sol1=1 then Status='04:SOL';
+				else if gz_seg2^=gz1 then Status="05:"||strip(gz1)||"_"||strip(irrl1);
+				else if irrl_flag1^=irrl1 then Status="06:"||strip(irrl1);
+				else if gz_seg2=gz1 and book1=bk1 and lt1='nonLI' then Status="07:STAY";
+				end;
+			else Status=Stat;
+			%end;
+			
+			%else %do;
+			if lt1='BKD' then Status='01:BKD';
+			else if lt1='LI' then Status='02:LI';
+			else if book1^=bk1 and Sol1=0 then Status="03:"||strip(bk1);
+			else if Sol1=1 then Status='04:SOL';
+			else if gz_seg2^=gz1 then Status="05:"||strip(gz1)||"_"||strip(irrl1);
+			else if irrl_flag1^=irrl1 then Status="06:"||strip(irrl1);
+			else if gz_seg2=gz1 and book1=bk1 and lt1='nonLI' then Status="07:STAY";
+			%end;
+			
+			/*カット時点に生きてた口座で、経過年数になくなる場合*/
+			if c003^=input("&eom",date9.) then c003=input("&eom",date9.);
+			
+			run;
+		
+			proc sql;
+			create table /*home.*/cust_out&&yymm&i as
+			select  "&Start_eom" as Cut_date,
+					c003 as YM format=YYMMDD10.,
+					gz_seg2,irrl_flag1,book1,status,Wo_Flag,
+					count(status) as CNT,  
+					sum(irrl_balance/1000000)	as irrl_MM,
+					sum(ac28/1000000)	as mcs_MM
+			from cust&&yymm&i
+			where model_elig=1
+			group by Cut_date,YM,gz_seg2,irrl_flag1,book1,status,Wo_Flag;
+			quit;
+		%end;
+		
+	%end;
+
+	data	home.Performance_&&yymm&s_cut;
+	set
+	%do i = &s_cut %to &e_cut %by 12;
+		cust_out&&yymm&i
+	%end ;
+	;
+	
+	/*Delete prior month before next iteration*/
+	%let del=%eval(s_cut+24);
+	%if &i>=&del %then %do; 
+	proc sql;drop table cust&&yymm&j;quit;
+	%end;
+	
+	run ;
+
+%global temp;
+%let temp=&q;
+%end;
+
+%let s_cut=%eval(&e_cut-(12*7));/* if &temp=1 then  %eval(&e_cut-(12*(&temp+6)))*/
+										/* if &temp=8 then  %eval(&e_cut-(12*(&temp-1)))*/
+data	Performance_ALL;
+set
+%do i =s_cut %to &e_cut %by 12;
+
+	Performance_&&yymm&i
+	
+%end ;
+;
+run ;
+
+%mend Elig_Vintage;
+
+%Elig_Vintage
+
+
+
+
+
+
+%let	s_cut= 108 ; /*CHANGE */
+%let	e_cut= 120 ; /*CHANGE */
+
+%macro wrap_up;
+data	Cust_ALL;
+set
+%do i = &s_cut %to &e_cut ;
+	Cust_&&yymm&i
+%end ;
+;
+run ;
+%mend wrap_up;
+
+%wrap_up
+
+
+data	Performance_ALL;
+set
+	Performance_0812
+	Performance_0912;
+run ;
+
+proc export data = Performance_ALL
+OUTFILE= "~/Performance_ALL.csv"
+dbms = csv replace ;
+run ;
