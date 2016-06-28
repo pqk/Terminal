@@ -1,0 +1,700 @@
+/******************* as of 2016/06/28  ***********************/
+
+/************************************************************/
+/************* PASSING A NONCHAR VAR IN A MACRO *************/
+/************************************************************/
+%macro interface(char, num, array, macro); 
+	%local major; 
+
+	%macro  breakarray(m, n, p, q); 
+		data _null_; 
+		call symput('major',&m); 
+		run;       
+
+		%put &m &n &p &q; 
+	%mend breakarray; 
+
+	%macro submacro(a, b); 
+		%put &a &b; 
+	%mend submacro; 
+
+	%put &char &num &array &macro; 
+
+	* Break up the array;
+	%breakarray&array.;
+	 
+	%put &major;
+	 
+	* Call the named macro;
+	%&macro.; 
+
+%mend interface; 
+
+%interface(char=character, num=2005, array=(1,2,3,4), macro=submacro(a=5,b=c)); 
+
+/***************************************/
+
+
+/***************************************/
+/************* BUBBLE SORT *************/
+/***************************************/
+
+/* SOURCE:
+Paper 376-2013
+Horizontal Data Sorting and Insightful Reporting: A Useful SAS Technique
+*/
+
+data testscores;
+infile datalines missover;
+input ID $4. Test_1-Test_12 3.;
+datalines;
+A001 82 99 100 69 34 99 94 42 42 97 . .
+A003 . 45 67 . 45 88 95 . . . 63 32
+A004 52 . 35 66 . 77 79 . 68 . 58 79
+A006 86 82 71 45 78 . 52 . 45 31 . 78
+A008 50 67 59 63 58 . 70 . 53 94 . 61
+;
+run;
+
+/* Horizonal Sorting: Bubble Sort Algorithm */
+
+data Bubble_sort_desc(drop= i j temp);
+set testscores;
+
+array s{12} test_1-test_12;
+	do i=1 to 12; /*each successive iteration of i reduces the test_j<test_j+1 comparison by 1 variable*/
+		do j=1 to 12-i;
+			if s(j) < s(j+1) then do; /*Sort data in descending order.*/
+				Temp = s(j);
+				s(j)= s(j+1);
+				s(j+1) = Temp;
+			end; 
+		end; 
+	end;
+run ;
+
+data Bubble_sort_asc(drop= i j temp);
+set testscores;
+
+array s{12} test_1-test_12;
+	do i=1 to 12;
+		do j=1 to 12-i;
+			if s(j) > s(j+1) then do; /*Sort data in ascending order.*/
+				Temp = s(j);
+				s(j)= s(j+1);
+				s(j+1) = Temp;
+			end; 
+		end; 
+	end;
+run ;
+
+
+/***************************************/
+
+/***************************************/
+/************* CREATIVE MACRO DO LOOP **/
+/***************************************/
+
+
+options mlogic mprint symbolgen mcompilenote=all;
+
+%let YYMM108=0812;
+%let YYMM120=0912;
+%let YYMM132=1012;
+%let YYMM144=1112;
+%let YYMM156=1212;
+%let YYMM168=1312;
+%let YYMM180=1412;
+%let YYMM192=1512;
+
+%let start=108;
+%let fin=192;
+
+%macro test;
+%do i=&start %to &fin %by 12;
+
+	data _&&YYMM&i;
+	x=&&YYMM&i;
+	y=&i;
+	run;
+
+%global temp;
+%let temp=&i;
+%end;
+
+%let e_cut=%eval(&temp-12);
+
+data _All;
+set
+	%do q =&start %to &e_cut %by 12;
+	_&&YYMM&q
+	%end;
+;
+run ;
+
+%mend test;
+
+%test
+
+/***************************************/
+
+/***************************************/
+/*************  DICTIONARY *************/
+/***************************************/
+
+/*create metadataset of a time series of datasets in order to check if format in all is the same*/
+
+proc sql noprint;
+create table aa as
+select substr(memname,1,6) as abbrv,memname,name,format
+from dictionary.columns
+having libname='L5' and abbrv='PAYOUT';
+quit;
+
+proc sort data=aa;by memname;run;
+proc transpose data=aa out=ab;
+var format;
+id name;
+by memname;
+run;
+
+/*****************/
+
+
+/***************************************/
+/*************  HASH OBJECTS ************/
+/***************************************/
+
+data aa;
+x=1;y='A';output;
+x=2;y='B';output;
+x=4;y='D';output;run;
+
+data bb;
+x=1;z='1A';output;
+x=2;z='2B';output;
+x=3;z='3C';output;
+x=4;z='4D';output;run;
+
+data ab;
+if _n_=1 then do;
+	if 0 then set bb;
+	declare hash bb(dataset:'bb');
+		bb.definekey('x');
+		bb.definedata('y');
+		bb.definedone();
+	call missing(y);
+	end;
+set aa;
+bb.find(key:x);
+	/*if rc=0 then do;
+	LN=LastName;
+	HD=HireDate;
+	end;*/
+run;
+
+** WORKAROUND **/
+%macro CUST_prep; 
+ %do i = &e_cut %to 133 %by -1; /*Need only run once every month*/ 
+ 
+ data cust_DNE&&yymm&i(drop=Wakai_date);
+ if _n_=1 then do;
+	if 0 then set master.cust_master1412;
+		declare hash cust(dataset:'master.cust_master&&yymm&i');
+		cust.definekey('serialno');
+		cust.definedata('c188','c189','c190','c191','c192','c193','c194','c195','c196','c197');
+		cust.definedone();
+	call missing(c188,c189,c190,c191,c192,c193,c194,c195,c196,c197);
+	end;
+set DNE;
+/*drop rc;*/
+rc=cust.find();
+run;
+
+%end;
+
+%mend CUST_prep;
+
+%CUST_prep
+/** WORKAROUND END **/
+
+
+/*test*/
+ 
+ data test_DNE1412(drop=Wakai_date);
+ if _n_=1 then do;
+	if 0 then set master.cust_master1412;
+		declare hash cust(dataset:'master.cust_master1412');
+		cust.definekey('serialno');
+		cust.definedata('c188','c189','c190','c191','c192','c193','c194','c195','c196','c197');
+		cust.definedone();
+	call missing(c188,c189,c190,c191,c192,c193,c194,c195,c196,c197);
+	end;
+set DNE;
+/*drop rc;*/
+rc=cust.find();
+run;
+/*****************/
+
+/*************************************************/
+/*************  ARRAY HORIZONTAL COMP ************/
+/************************************************/
+
+data sales;
+input Cust _1109 _1110 _1112 _1201 _1202 _1203 _1204 _1205;
+datalines;
+1984 0 350 450 0 0 0 0 0
+1883 250 0 0 0 0 0 0 400
+7915 0 0 0 0 0 405 0 100
+3842 0 600 0 250 0 450 0 380
+1033 0 0 0 0 0 0 0 0
+;
+%let q=7;
+data aa;
+set sales;
+array sales{*} _1109 -- _1205;
+array Comp{&q} _temporary_;
+do i=1 to dim(comp);
+if Sales(i)<Sales(i+1) then do;
+	Variable=vname(Sales[i]);
+	/*add statements here*/
+	output;
+	leave;
+	end;
+end;
+
+Total=sum(of sales[*]);
+run;
+
+/*****************/
+
+
+/*************************************************/
+/*************  MACRO DO LOOP TEST   ************/
+/************************************************/
+
+
+options mlogic mprint symbolgen mcompilenote=all;
+
+%let YYMM171=1403;
+%let YYMM170=1402;
+%let YYMM169=1401;
+%let YYMM168=1312;
+%let YYMM167=1311;
+%let YYMM166=1310;
+%let start=166;
+%let fin=171;
+
+%macro test;
+%do i=&fin %to &start %by -1;
+
+%if &i=&fin %then %do;
+
+data _&&YYMM&i ALL;
+x=&&YYMM&i;
+y=&i;
+run;
+
+%end;
+
+%else %do;
+
+data _&&YYMM&i;
+x=&&YYMM&i;
+y=&i;
+run;
+
+data ALL;
+set ALL _&&YYMM&i;
+run;
+
+%end;
+
+%end;
+%mend test;
+
+%put _user_;
+
+%test
+
+%test
+
+%sysmacdelete test nowarn;
+
+/*****************/
+
+/*************************************************/
+/*************  PROC MEANS MISSING OPTION ********/
+/************************************************/
+
+/*PROC MEANS Practice: example of MISSING option*/
+/*create dummy data*/
+data dummy;
+infile datalines dsd missover;
+input Num Status $ x y;
+datalines;
+1,DeAct,,5
+2,DeAct,5,8
+3,DeAct,3,
+4,DeAct,2,4
+5,DeAct,8,9
+6,Act,1,5
+7,Act,3,3
+8,Act,,
+9,Act,6,7
+10,Act,3,3
+;
+proc means data=dummy nonobs nmiss missing n mean;
+var x;
+class Status;
+run;
+
+/*unfortunately missing fails to do anything worthwhile...
+doesn't count missing values as expected...*/
+
+/*****************/
+
+/*************************************************/
+/*********************  MERGE *******************/
+/************************************************/
+
+data t1;
+x=1;y='A';output;
+x=2;y='B';output;
+x=3;y='C';output;
+run;
+
+data t2;
+x=2;y='B';output;
+x=3;y='C';output;
+x=4;y='D';output;
+run;
+
+data onlyt1;
+merge t1(in=t1) t2(in=t2);
+by x;
+if t1 and not t2;
+run;
+
+data onlyt2;
+merge t1(in=t1) t2(in=t2);
+by x;
+if t2 and not t1;
+run;
+
+data both;
+merge t1(in=t1) t2(in=t2);
+by x;
+if t1 and t2;
+run;
+
+/*****************/
+
+/*************************************************/
+/********************* MACVAR TEST ***************/
+/************************************************/
+
+%let s_cut=1;
+%let s_cut=%eval(&s_cut+1);
+
+data test;
+x=1;
+if &s_cut=2 then y='Worked';
+else y='Fail';
+run;
+
+/******************/
+
+/*************************************************/
+/********** EASY WAY TO PARSE A VARIABLE *********/
+/************************************************/
+
+/*interest way to parse a variable w/o cumbersome if/then statatements*/
+data test;
+x=1;output;
+x=1;output;
+x=.;output;
+x=3;output;
+x=3;output;
+x=.;output;
+x=4;output;
+x=.;output;
+x=4;output;
+x=5;output;
+x=5;output;
+x=5;output;
+run;
+
+/*by just setting var= a condition then you are telling SAS to return 1 for T or 1 for F*/
+data test;
+set test;
+test=x in(1,5);
+test1=(x=.);
+run;
+
+/******************/
+
+
+/**************************************/
+/********** DICTIONARY MACRO *********/
+/************************************/
+
+%let yymm175=1405;
+
+proc sql;
+	select min(substr(memname,9,4)) into:extlaw
+	from dictionary.tables
+	where libname='WORK';
+quit;
+
+%put _user_;
+
+%macro test;
+%if &yymm175>=&extlaw %then %do;
+data test;
+y=1;
+run;
+%end;
+
+%mend test;
+
+%test
+
+/******************/
+
+/****************************************************/
+/********** DYNAMIC DATASET STACKING MACRO *********/
+/**************************************************/
+
+/*DO-LOOP w/i Macro that allows for stacking of multiple datasets w/o listing individual
+dataset names--good for expaning range of datasets such as mo. trx data*/
+
+/*step 1: create dummy datasets*/
+data have_0;x=0;run;
+data have_1;x=1;run;
+data have_2;x=2;run;
+data have_3;x=3;run;
+data have_4;x=4;run;
+
+/*Create and run macro*/
+%macro check;
+data want;
+set have_0
+%do j=1 %to 4;
+have_&j.
+%end;
+;
+run;
+
+%mend check;
+
+%check
+
+/******************/
+
+
+/****************************************************/
+/*************** MACRO MULTIPLE DATES **************/
+/**************************************************/
+
+options symbolgen;
+/*test INTNX on _&date*/
+/****TEST****/
+data test;
+x='31mar2011'd;output;
+x='31mar2011'd;output;
+x='31mar2011'd;output;
+format x date7.;run;
+
+proc sql noprint;
+select max(x) as cdate into :cdate
+from test;
+%put _user_;quit;/*check date format output*/
+
+data test1;
+x=intnx('month',&cdate,-2,'E');/*check INTX eval of macvar*/
+y=strip(month(intnx('month',&cdate,-2,'E')));/*by using char fx STRIP() num var is autoconv to char*/
+z=strip(year(intnx('month',&cdate,-2,'E')));
+format x yymmn5.;
+d=put(intnx('month',&cdate,-2,'E'),yymmn5.);
+run;
+proc print data=test1;run;
+
+data _null_;
+call symputx('back',put(intnx('month',&cdate,-2,'E'),yymmn5.));run;
+%put _user_;
+/********/
+
+/**WORKING***/
+proc sql noprint;
+select max(_&date) as cdate into :cdate
+from PL_&prod._&two;
+%put _user_;quit;
+
+data _null_;
+call symputx('back',put(intnx('month',&cdate,-2,'E'),yymmn5.));run;
+
+%macro Book;
+%do %while(&two>1102);
+
+%end;
+%mend book;
+
+%book
+/*****/
+
+/***other***/
+%let report_date=1103;
+%let two=&report_date;
+data _null_;
+call symputx('one',put(intnx('month',mdy(substr(%two,3,2),1,substr(%two,1,2),-1,'E'),yymm4.));
+run;
+
+
+mdy(substr(%two,3,2),1,substr(%two,1,2)
+
+/******************/
+
+
+
+/****************************************************/
+/************** DYNAMIC COUNT NULL OBS *************/
+/**************************************************/
+
+data have_all;
+infile datalines truncover;
+input ID (var1 var2) ($) @@;
+datalines;
+1 a b 2 c d 3 e f 4 g h 5 i j 6 h k 7 l m 8 n o 9 p q
+;
+
+/*1st Method--only works if there are not sporatic missing values in the 
+dataset(have1) before the sequence of consecutive blanks begin*/
+data have1;
+infile datalines truncover;
+input ID (var1 var2) ($);
+datalines;
+1 a b
+2 c d
+3 e f
+4 g h
+5 i j
+6
+7
+8
+9
+;
+
+data want1;
+set have1;
+retain count 0;
+array vars _character_;
+if cmiss(of vars(*))=dim(vars) then count+1;
+run;
+proc print data=want1;run;
+
+/*2nd Method--works even if there are sporatic missing values in the dataset(have2) 
+before the sequence of consecutive blanks begin*/
+data have2;
+infile datalines truncover;
+input ID (var1 var2) ($);
+datalines;
+1 a b
+2
+3 e f
+4
+5 i j
+6 k l
+7
+8
+9
+;
+
+proc sql noprint;
+  select name, count(name) into :varlist separated by ',', :n_var
+  from dictionary.columns
+  where libname='WORK' and memname='HAVE2' and upcase(name) ne 'ID';
+quit;
+
+data want2;
+  set have2 end=last;
+  if cmiss(&varlist) = &n_var then
+  miss_count+1;
+  else miss_count=0;
+  if last then put "number of trailing missing rows: " miss_count;
+run;
+
+proc print data=want2;run;
+
+/******************/
+
+
+/****************************************************/
+/******************** RETAIN REVIEW ****************/
+/**************************************************/
+
+
+data have_all;
+infile datalines truncover;
+input ID (var1 var2) ($) @@;
+datalines;
+1 a b 2 c d 3 e f 4 g h 5 i j 6 h k 7 l m 8 n o 9 p q
+;
+
+/*ex1*/
+data want;
+set have;
+retain var3-var5 ('a' 'b' 'c');
+run;
+
+/*ex2*/
+data want;
+set have;
+retain var3-var5 ('a','b','c');
+run;
+
+/*ex3*/
+data want;
+set have;
+retain var3-var5 ('a');
+run;
+
+/**************************************************/
+
+/****************************************************/
+/******************** COALESCE REVIEW ***************/
+/**************************************************/
+
+data one;
+input X Y A $;
+cards;
+1 1 a
+1 2 b
+2 1 b
+2 2 d
+4 1 d
+;
+data two;
+input X Y B $;
+cards;
+2 1 x
+2 2 q
+3 1 y
+5 1 v
+;
+data onetwo;
+merge one two;
+by X;
+run;
+
+proc print data=one;run;
+proc print data=two;run;
+proc print data=onetwo;run;
+/*the below PROC SQL duplicates above match merge when using two var key*/
+proc sql;
+	select coalesce(one.x,two.x) as x,coalesce(one.y,two.y) as y,a,b
+	from one full join two on one.x=two.x and one.y=two.y;
+quit;
+
+
+/**************************************************/
