@@ -1,0 +1,349 @@
+libname 	home	"~/";
+filename Venn "~/";
+
+ods trace on;
+*ods graphics on / reset=all imagefmt=jpeg; /* imagemap=on width=1140px height=400px noborder
+				  imagename='SBNP';*/
+*ods listing /*image_dpi=300 sge=on gpath=sbnp style=PK_CTheme1*/;
+*ods select all;
+
+/***TEST DATASET****//*
+data data;
+call streaminit(123);
+do i = 1 to 50;
+id = i;
+A = RAND('UNIFORM');
+B = RAND('UNIFORM');
+C = RAND('UNIFORM');
+D = RAND('UNIFORM');
+output;
+end;
+run;
+*//***/
+
+data aINV;
+set inventory1412;
+if Category in ('Non Litigation','Without Claim') then A=1;else A=0;
+if irrl_flag='-' then B=1;else B=0;
+if gz_seg1 in ('C','B','A1R','A2') then C=1;else C=0;
+if Pool='Y' then D=1;else D=0;
+if A=1 and B=1 and C=1 and D=1 then Check=1;else Check=0;
+run;
+
+/*EDA*/
+ods listing;
+proc freq data=aINV(where=(C=0 and D=0 and A=0 and D=0));
+tables irrl_flag*pool / norow nocol nopercent nocum;
+run;
+
+proc sql;
+create table aa as
+select count(distinct serialno) as Distinct,count(serialno) as Count
+from inventory1412;quit;
+
+
+
+proc export data =data_sum2
+OUTFILE= "~/data_sum2.csv"  /*CHANGE*/
+dbms = csv replace;
+run;
+
+/***/
+
+
+%macro venn( data=,venn_diagram =4 ,cutoff= =1 /* < 0.3*/
+ /* Set the P Value cut-off or any other appropriate cut off
+Valid values are the right hand side of an if statement */
+,GroupA = NL vs L /* Define group name 1, mandatory */
+,GroupB = IRRL- vs IRRL>=0 /* Define group name 2, mandatory */
+,GroupC = A2-A1R-B-C vs W-New_W /* Define group name 3, mandatory for 3 and 4 way diagrams */
+,GroupD = Pool vs notPool /* Define group name 4, mandatory for 4 way diagrams */
+,out_location =Venn
+/* Define the path for all output files e.g. C:\Venn Diagrams */
+,outputfilename = Venn diagram Test /* Define the filename for the graphic file */
+,drilldownfilename = Drilldown
+/* Define the filename for the drill down data file */
+);
+/* Calculate the category for each observation in the dataset
+This has to be done differently for 2,3 and 4 way diagrams */
+data data_reformatted;
+set &data;
+run;
+
+/* Counting the overlap */
+data data_reformatted2(keep=serialno Category irrl_flag gz_seg1 Pool A B C D ABCD ABC ABD ACD BCD AB AC AD BC BD CD A1 B1 C1 D1);
+set data_reformatted;
+
+%IF &venn_diagram = 2 %THEN %DO;
+if A ne . and B ne . then do;
+if A &cutoff and B &cutoff then AB = 1;
+else AB = 0;
+end;
+if A ne . then do;
+if A &cutoff and AB ne 1 then A1 = 1; else A1 = 0;
+end;
+if B ne . then do;
+if B &cutoff and AB ne 1 then B1 = 1; else B1 = 0;
+end;
+%end;
+
+%ELSE %IF &venn_diagram = 3 %THEN %DO;
+if A ne . and B ne . and C ne . then do;
+if A &cutoff and B &cutoff and C &cutoff then ABC = 1;
+else ABC = 0;
+end;
+if A ne . and B ne . then do;
+if A &cutoff and B &cutoff and ABC ne 1 then AB = 1;
+else AB = 0;
+end;
+if A ne . and C ne . then do;
+if A &cutoff and C &cutoff and ABC ne 1 then AC = 1;
+else AC = 0;
+end;
+if B ne . and C ne . then do;
+if B &cutoff and C &cutoff and ABC ne 1 then BC = 1;
+else BC = 0;
+end;
+if A ne . then do;
+if A &cutoff and AB ne 1 and AC ne 1 and ABC ne 1 then A1 = 1;
+else A1 = 0;
+end;
+if B ne . then do;
+if B &cutoff and AB ne 1 and BC ne 1 and ABC ne 1 then B1 = 1;
+else B1 = 0;
+end;
+if C ne . then do;
+if C &cutoff and AC ne 1 and BC ne 1 and ABC ne 1 then C1 = 1;
+else C1 = 0;
+end;
+%END;
+
+%ELSE %IF &venn_diagram=4 %THEN %DO;
+if A ne . and B ne . and C ne . and D ne . then do;
+if A &cutoff and B &cutoff and C &cutoff and D &cutoff then ABCD = 1;else ABCD = 0;end;
+
+if A ne . and B ne . and C ne . then do;
+if A &cutoff and B &cutoff and C &cutoff and ABCD ne 1 then ABC = 1;else ABC = 0;end;
+
+if A ne . and B ne . and D ne . then do;
+if A &cutoff and B &cutoff and D &cutoff and ABCD ne 1 then ABD = 1;else ABD = 0;end;
+
+if A ne . and C ne . and D ne . then do;
+if A &cutoff and C &cutoff and D &cutoff and ABCD ne 1 then ACD = 1;else ACD = 0;end;
+
+if B ne . and C ne . and D ne . then do;
+if B &cutoff and C &cutoff and D &cutoff and ABCD ne 1 then BCD = 1;else BCD = 0;end;
+
+if A ne . and B ne . then do;
+if A &cutoff and B &cutoff and ABC ne 1 and ABD ne 1 and ABCD ne 1 then AB = 1;else AB = 0;end;
+
+if A ne . and C ne . then do;
+if A &cutoff and C &cutoff and ABC ne 1 and ACD ne 1 and ABCD ne 1 then AC = 1;else AC = 0;end;
+
+if A ne . and D ne . then do;
+if A &cutoff and D &cutoff and ABD ne 1 and ACD ne 1 and ABCD ne 1 then AD = 1;else AD = 0;end;
+
+if B ne . and C ne . then do;
+if B &cutoff and C &cutoff and ABC ne 1 and BCD ne 1 and ABCD ne 1 then BC = 1;else BC = 0;end;
+
+if B ne . and D ne . then do;
+if B &cutoff and D &cutoff and ABD ne 1 and BCD ne 1 and ABCD ne 1 then BD = 1;else BD = 0;end;
+
+if C ne . and D ne . then do;
+if C &cutoff and D &cutoff and ACD ne 1 and BCD ne 1 and ABCD ne 1 then CD = 1;else CD = 0;end;
+
+if A ne . then do;
+if A &cutoff and AB ne 1 and AC ne 1 and AD ne 1 and ABC ne 1 and ABD ne 1 and ACD ne 1 and ABCD ne 1 then A1 = 1; else A1 = 0;end;
+
+if B ne . then do;
+if B &cutoff and AB ne 1 and BC ne 1 and BD ne 1 and ABC ne 1 and ABD ne 1 and BCD ne 1 and ABCD ne 1 then B1 = 1; else B1 = 0;end;
+
+if C ne . then do;
+if C &cutoff and AC ne 1 and BC ne 1 and CD ne 1 and ABC ne 1 and ACD ne 1 and BCD ne 1 and ABCD ne 1 then C1 = 1; else C1 = 0;end;
+
+if D ne . then do;
+if D &cutoff and AD ne 1 and BD ne 1 and CD ne 1 and ABD ne 1 and ACD ne 1 and BCD ne 1 and ABCD ne 1 then D1 = 1; else D1 = 0;end;
+
+%END;
+run;
+
+/*
+COUNTING THE ELEMENTS IN EACH GROUP
+After the Macro identifies the elements in each group it uses PROC UNIVARIATE
+to sum up the number of elements in each group.
+The total number of element within the diagram i.e. the union of Groups A, B, C,
+and D, and the total number of elements in the dataset i.e. the universal set are
+then calculated. This is used to identify the number of elements that fall outside the union.
+*/
+proc univariate data = Data_reformatted2 noprint;
+var AB A1 B1
+
+%if &venn_diagram > 2 %then %do;
+ABC AC BC C1
+%end;
+
+%if &venn_diagram > 3 %then %do;
+ABCD ABD ACD BCD AD BD CD D1
+%end;
+;
+
+output out = data_sum sum = sum_AB sum = sum_A1 sum = sum_B1
+
+%if &venn_diagram > 2 %then %do;
+sum = sum_ABC sum = sum_AC sum = sum_BC sum = sum_C1
+%end;
+
+%if &venn_diagram > 3 %then %do;
+sum = sum_ABCD sum = sum_ABD sum = sum_ACD
+sum = sum_BCD sum = sum_AD sum = sum_BD
+sum = sum_CD sum = sum_D1
+%end;
+;
+
+run;
+
+/* Counting the number in the universal set */
+proc sql noprint;
+create table id_count as
+select count(serialno) as count_id
+from data_reformatted;
+quit;
+
+/* Counting the number inside the union */
+data data_sum2;
+set data_sum;
+totalinside = sum(sum_AB, sum_A1, sum_B1
+
+%if &venn_diagram > 2 %then %do;
+,sum_ABC, sum_AC, sum_BC, sum_C1
+%end;
+
+%if &venn_diagram > 3 %then %do;
+,sum_ABCD, sum_ABD, sum_ACD, sum_BCD, sum_AD,
+sum_BD, sum_CD, sum_D1
+%end;
+);
+run;
+
+/*
+COUNTING THE ELEMENTS THAT FALL OUTSIDE OF THE UNION
+Using the fetch function the values of the total number of elements within the
+union and the universal set are fetched from the appropriate datasets and assigned
+to a macro-variable. The total number of elements that fall outside the diagram is
+then calculated by using %eval to evaluate the arithmetic expression of the number
+of elements in the universal set - the number of elements within the union.
+*/
+/* Calculating the total number of unique ids - so that I can calculate
+the number that falls outside of the groups*/
+proc sql noprint;
+select count_id into: TN
+from id_count;
+quit;
+/* Calculating the total number of values that fall within the groups */
+proc sql noprint;
+select totalinside into: TI
+from data_sum2;
+quit;
+
+/* Calculating the total numbers that fall outside all of the groups */
+%let TO = %eval(&TN - &TI);
+
+/* Assigning the sums to macro variables */
+proc sql noprint;
+select sum_A1, sum_B1, sum_AB into :A, :B, :AB
+from data_sum2;
+quit;
+%if &venn_diagram > 2 %then %do;
+proc sql noprint;
+select sum_C1, sum_AC, sum_BC, sum_ABC into :C, :AC, :BC, :ABC
+from data_sum2;
+quit;
+%end;
+%if &venn_diagram > 3 %then %do;
+proc sql noprint;
+select sum_D1, sum_AD, sum_BD, sum_CD, sum_ABD, sum_ACD, sum_BCD, sum_ABCD into :D, :AD,
+:BD, :CD, :ABD, :ACD, :BCD, :ABCD
+from data_sum2;
+quit;
+%end;
+
+/* The rest of the macro needs to be done seperately for 2, 3 and 4
+way plots */
+data test;
+do x = 1 to 100;
+y = x;
+output;
+end;
+run;
+
+
+/*************** 4 WAY VENN DIAGRAMS ***************/
+%if &venn_diagram = 4 %then %do;
+proc template;
+define statgraph Venn4Way;
+begingraph / drawspace=datavalue;
+
+/* Plot */
+layout overlay / yaxisopts = (display = NONE) xaxisopts = (display = NONE);
+scatterplot x=x y=y / markerattrs=(size = 0);
+
+/* Venn Diagram (Ellipses) */
+drawoval x=28 y=39 width=26 height=100 /
+display=all fillattrs=(color=red transparency=0.85) 
+	outlineattrs=(color=red) transparency=0.50 WIDTHUNIT= Percent HEIGHTUNIT= Percent rotate = 45 ;
+	
+drawoval x=72 y=39 width=26 height=100 / display=all fillattrs=(color=green transparency=0.85) 
+	outlineattrs=(color=green) transparency=0.50 WIDTHUNIT= Percent HEIGHTUNIT= Percent rotate = 315 ;
+	
+drawoval x=57 y=54 width=26 height=100 / display=all fillattrs=(color=blue transparency=0.85)
+	outlineattrs=(color=blue) transparency=0.50 WIDTHUNIT= Percent HEIGHTUNIT= Percent rotate = 335 ;
+	
+drawoval x=43 y=54 width=26 height=100 / display=all fillattrs=(color=yellow transparency=0.85) 
+	outlineattrs=(color=yellow) transparency=0.50 WIDTHUNIT= Percent HEIGHTUNIT= Percent rotate = 25 ;
+
+/* Numbers */
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&A" / x=13 y=60 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&B" / x=35 y=80 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&C" / x=65 y=80 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&D" / x=87 y=60 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&AB" / x=36 y=45 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&AC" / x=41 y=16 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&AD" / x=50 y=6 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&BC" / x=50 y=55 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&BD" / x=59 y=16 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&CD" / x=64 y=45 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&ABC" / x=43 y=30 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&BCD" / x=57 y=30 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&ACD" / x=46 y=12 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&ABD" /x=52 y=12 anchor=center; /*error "&BCD" should be "&ABD"*/
+drawtext textattrs = GRAPHVALUETEXT(size = 6pt weight = bold) "&ABCD" /x=50 y=21 anchor=center;
+drawtext textattrs = GRAPHVALUETEXT(size = 7pt weight = bold) "Excluded TTL= &TO" / x=70 y=4 anchor=center width = 30;
+drawtext textattrs = GRAPHVALUETEXT(size = 7pt weight = bold) "TTL= &TN" / x=8 y=4 anchor=center width = 30;
+drawtext textattrs = GRAPHVALUETEXT(size = 7pt weight = bold) "Included TTL= &TI" / x=28 y=4 anchor=center width = 30;
+
+/* Labels */
+drawtext textattrs = GRAPHVALUETEXT(size = 7pt weight = bold) "&GroupA" / x=6
+y=20 anchor=center width = 30;
+drawtext textattrs = GRAPHVALUETEXT(size = 7pt weight = bold) "&GroupB" / x=6
+y=85 anchor=center width = 30;
+drawtext textattrs = GRAPHVALUETEXT(size = 7pt weight = bold) "&GroupC" / x=82
+y=85 anchor=center width = 30;
+drawtext textattrs = GRAPHVALUETEXT(size = 7pt weight = bold) "&GroupD" / x=82
+y=20 anchor=center width = 30;
+endlayout;
+endgraph;
+end;
+run;
+
+ods graphics on / reset = all border = off width=16cm height=12cm imagefmt =png imagename =
+"&outputfilename";
+ods listing gpath = "&out_location" image_dpi = 200;
+
+proc sgrender data=test template=Venn4Way;
+run;
+ods listing close;
+ods graphics off;
+%end;
+%mend venn;
+/* Example macro calls to produce 2,3 and 4 way diagrams */
+%venn( data = work.aINV);
