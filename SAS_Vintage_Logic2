@@ -1,0 +1,277 @@
+*options mlogic mprint symbolgen mcompilenote=all; /*debugging ON*/
+options nomlogic nomprint nosymbolgen mcompilenote=none; /*debugging OFF*/
+
+libname 	home	"~/";
+libname 	napa	"~/Napa";
+
+/*LOSS data set-up*/
+data napa_loss (drop=Date_diff temp);
+set napa.napa_loss;
+if model_date>="01Jan2012"d and model_date<="31dec2012"d then temp="31dec2012"d;
+else if model_date>="01Jan2013"d and model_date<="31dec2013"d then temp="31dec2013"d; 
+else if model_date>="01Jan2014"d and model_date<="31dec2014"d then temp="31dec2014"d; 
+else if model_date>="01Jan2015"d and model_date<="31dec2015"d then temp="31dec2015"d;
+YM=input(put(temp, yymmn4.),4.);/*must have formated date value in 4-digit numeral for below comparison*/
+run;
+/**/
+
+
+%let yymm1 = 1112;
+%let yymm2 = 1212;
+%let yymm3 = 1312;
+%let yymm4 = 1412;
+%let yymm5 = 1512;
+
+%let	s_cut= 1 ;
+%let	e_cut= 5 ; 
+
+%macro Elig_Yr0;
+
+%do i = &s_cut %to &e_cut %by 1;
+
+	data Eligible_&&yymm&i(drop=Sex_Code HONNININCOME_year Haiguusya_KBN JOB_KBN age cs_zan sp_zan MOB F_MOB);
+	infile "~/Napa/Eligible_&&yymm&i...csv" dlm=',' DSD missover firstobs=2;
+	input 
+		GEID :$8.
+		kabarai_calc2 :best32.
+		cs_zan :best32.
+		sp_zan :best32.
+		total_zan :best32.
+		Sex_Code :8.
+		HONNININCOME_year :best32.
+		Haiguusya_KBN :8.
+		JOB_KBN :8.
+		age :8.
+		F_MOB :$16.
+		dt_cut :yymmdd10.
+		kubun :8.
+		MOB :8.;
+	format DT_CUT yymmdd10.;
+
+	length seg $50.;		
+	  if kubun = 1 then seg = "01:On";		
+	  else if F_MOB = "" then seg = "02:Off_NA";		
+	  else if F_MOB = "完済6ヶ月未満" then seg = "03：完済6ヶ月未満";		
+	  else if F_MOB = "完済1年" then seg = "04：完済1年";		
+	  else if F_MOB = "完済2年" then seg = "05：完済2年";		
+	  else if F_MOB = "完済3年" then seg = "06：完済3年";		
+	  else if F_MOB = "完済4年" then seg = "07：完済4年";		
+	  else if F_MOB = "完済5年" then seg = "08：完済5年";		
+	  else if F_MOB = "完済6年" then seg = "09：完済6年";		
+	  else if F_MOB = "完済7年" then seg = "10：完済7年";		
+	  else if F_MOB = "完済8年" then seg = "11：完済8年";		
+	  else if F_MOB = "完済9年" then seg = "12：完済9年";		
+	  else if F_MOB = "完済10年" then seg = "13：完済10年";		
+	  else if F_MOB = "完済10年以上" then seg = "14：完済10年以上";	
+	
+	YM=&&yymm&i;
+	Status="Elig";
+	Vintage_Yr="Y0";
+	run;
+
+	proc sort data=Eligible_&&yymm&i;by GEID;run;
+	
+	proc sql;
+	create table Vin_Sum_&&yymm&i.._0 as
+	select YM,Vintage_Yr,Status,kubun,Seg,count(GEID) as CNT,sum(kabarai_calc2) as Exposure,sum(total_zan) as Zan
+	from Eligible_&&yymm&i
+	group by YM,Vintage_Yr,Status,kubun,Seg;
+	quit;
+	
+%end;
+
+%mend Elig_Yr0;
+
+%Elig_Yr0
+
+
+
+%macro Elig_Vintage;
+
+%do q=0 %to 3;	
+	%let strt=%eval(1+%eval(1*&q));	
+	%let fin=%eval(&e_cut-&strt);
+	
+	%do i=1 %to &fin;
+		%let z=%eval(&i+&strt);
+
+		%put q = &q;
+		%put strt = &strt  fin = &fin;
+		%put i = &i;
+		%put z = &z;
+		%put &&yymm&strt.._&i;
+
+		data Vintage_&&yymm&strt.._&i;
+		merge eligible_&&yymm&strt(in=t1 drop=Status)
+			  eligible_&&yymm&z(in=t2 keep=GEID)
+			  napa_loss(in=t3 keep=GEID YM Kabarai Gnkn GZ_NGZ where=(YM<=&&yymm&z));
+		by GEID;
+		if t1 and t3 then Status="Loss";	/*カット時点にある、当期にロスが発生した累計口座件数*/
+		else if t3 then delete;
+		else if t1 and t2 then Status="Elig";	/*カット時点にある、当期にもある口座件数*/
+		else if t1 and not t2 then Status="SOL";	/*カット時点にある、当期にいない口座件数*/
+		else if not t1 and t2 then Status="New"; 	/*カット時点にいない、当期にある口座件数*/
+		Vintage_Yr="Y"||strip(&i);
+		YM=strip(&&yymm&strt);
+		run;
+		
+		/*Use values from current period for New accounts*/
+		data Temp(rename=(kabarai_calc2=kab total_zan=tzan seg=seg1)); 
+		merge Vintage_&&yymm&strt.._&i(in=t1 where=(Status="New"))
+			  eligible_&&yymm&z(in=t2 keep=GEID seg kabarai_calc2 total_zan);
+		by GEID;
+		if t1;
+		run;
+		
+		data Vintage_&&yymm&strt.._&i(drop=kab tzan seg1);
+		merge Vintage_&&yymm&strt.._&i(in=t1)
+			  temp(in=t2);
+		by GEID;
+		if t1;
+		if Status="New" then do;
+			kabarai_calc2=kab;
+			total_zan=tzan;
+			seg=seg1;
+			YM=strip(&&yymm&strt);end;
+		run;
+		/***/
+		
+		/*EDA*/
+		title "&yymm&strt.._&i";
+		proc freq data=Vintage_&&yymm&strt.._&i;
+		tables Status /norow nocol nopercent;
+		run;
+
+		proc sql;
+		create table Vin_Sum_&&yymm&strt.._&i as
+		select YM,Vintage_Yr,Status,kubun,GZ_NGZ,Seg,
+				count(GEID) as CNT,sum(kabarai_calc2) as Exposure,sum(total_zan) as Zan,
+				sum(Kabarai) as Payout,sum(Gnkn) as Gankin
+		from Vintage_&&yymm&strt.._&i
+		group by YM,Vintage_Yr,Status,kubun,GZ_NGZ,Seg;
+		quit;
+	%end;
+%end;
+
+%mend Elig_Vintage;
+
+%Elig_Vintage
+
+
+		
+%macro RollUp;
+
+%do p=0 %to 4;
+	%let last=%eval(4-%eval(1*&p));
+	%let v=%eval(1+&p);
+	
+	data Vin_Sum_&&yymm&v;
+	set
+	%do r=0 %to &last;
+		Vin_Sum_&&yymm&v.._&r
+	%end;
+	;
+	run;
+%end;
+
+data Vintage_Summary;
+set
+%do i=1 %to 5;
+	Vin_Sum_&&yymm&i
+%end;
+;
+run;
+
+%mend RollUp;
+
+%Rollup
+
+
+proc export data =Vintage_Summary
+OUTFILE= "~/Napa/Vintage_Summary.csv"
+dbms = csv replace ;
+run;
+
+
+proc export data =napa.Vin_Sum_1112
+OUTFILE= "~/Napa/Vin_Sum_1112.csv"
+dbms = csv replace ;
+run;
+
+
+
+
+
+
+
+
+	
+
+proc sql;
+create table napa.Vin_Sum_1112_1 as
+select YM,Vintage_Yr,Status,kubun,Seg,
+		count(GEID) as CNT,sum(kabarai_calc2) as Exposure,sum(total_zan) as Zan,sum(Kabarai) as Payout,sum(Gnkn) as Gankin
+from napa.Vintage_1112_1
+group by YM,Vintage_Yr,Status,kubun,Seg;
+quit;
+
+
+proc freq data=napa.vintage_1212_2;
+tables Status /norow nocol nopercent;
+run;
+
+proc freq data=test;
+tables seg /norow nocol nopercent;
+where Status="SOL";
+run;
+
+
+
+
+
+
+
+
+%let i=2;
+%put &&yymm&i;
+
+data loss2;
+set loss1;
+if q=&&yymm&i;
+run;
+
+
+
+
+/*EDA*/
+proc freq data=loss1;
+tables Cut_date /norow nocol nopercent;
+run;
+
+data test;
+set
+napa.Eligible_1112
+napa.Eligible_1212
+napa.Eligible_1312
+napa.Eligible_1412
+napa.Eligible_1512;
+run;
+
+proc freq data=test;
+tables seg*YM /norow nocol nopercent;
+run;
+where kubun=0;
+
+
+
+proc freq data=Eligible_1212;
+tables seg /norow nocol nopercent;
+run;
+where kubun=0;
+
+proc means data=Eligible_1112 /sum
+
+proc means data=Eligible_1112 sum nobs maxdec=0;
+var kabarai_calc2;
+class seg ;
+run;
