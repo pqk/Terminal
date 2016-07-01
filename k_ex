@@ -1,0 +1,631 @@
+options nomprint;
+
+libname	l1	"/share/sfrisk/legal/1_eligible";
+libname	l2	"/share/sfrisk/legal/2_li";
+libname	l4 	"/share/sfrisk/legal/4_inventory";
+libname	l5	"/share/sfrisk/legal/5_kabarai";
+libname	master	"/share/world/master";
+libname 	home "~/";
+
+%include 		"/odd/lib/sf-dwh.key";
+
+/*%%%%%%%%%% CP Automatic Update %%%%%%%%%%*/
+data _null_ ;
+  s_cut = intck('MONTH','31Jan2000'd,today()) ;
+  call symput('s_cut',compress(s_cut));
+run;
+%put %nrstr(&s_cut =) &s_cut ;
+
+data _null_ ;
+  e_cut = intck('MONTH','31Jan2000'd,today()) ;
+  call symput('e_cut',compress(e_cut));
+run;
+%put %nrstr(&e_cut =) &e_cut ;
+
+data _null_ ;
+	last_m1		= intnx('MONTH',today(),-1) ;
+	last_m1_6	= put(year(last_m1),z4.) || put(month(last_m1),z2.) ;
+	call symput('yymm',substr(last_m1_6,3,4)) ;
+run ;
+%put %nrstr(&yymm =) &yymm ;
+
+
+/*%%%%%%%%%% CP Manual Update %%%%%%%%%%*/
+
+%let s_cut =183;	/*CHANGE!*/
+%let e_cut =183;	/*CHANGE!*/
+%let yymm =1503;	/*CHANGE! >>>for l5.Disclosure&yymm below >>> will yield inaccurate results unless &e_cut is same month/yr as &yymm */
+/*	1211 155
+	1501 181*/
+
+/*** Initial Date ***/
+%let ST="01jan2000"d;         
+data _null_ ;
+        call symput ("n",intck("month",&ST-1,intnx('day',intnx('month',today(),0),-1))) ;
+run;
+/***** Check *****/
+%put %nrstr(&n =) &n ;
+data _null_;
+	%macro YM1 ;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&ST-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%mend ;
+	%YM1 ;
+run;
+%macro YM2 ;
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i ;
+	%end ;
+%mend ;
+%YM2 ;
+
+/***********************************************************/
+/**		IN PROCESS INVENTORY - OLD DEFINITION 			  **/
+/**			201403月までに採用した定義を基につき		  **/
+/**	         Version 2.0 by Peter Kirsch				  **/
+/** v2.0 includes enhancements in order to:				  **/
+/**	(1) reduce execution time							  **/
+/**	(2) allow for EDA and troubleshooting of inventory    **/
+/***********************************************************/
+
+
+/*** %%%%%%%%%%%%%%%%%%%% CONVERT %%%%%%%%%%%%%%%%%%%% *****/
+proc sort data = risklib.convert out = convert ;
+by no ;
+where	no > 10100000 ;
+run ;
+
+
+/*** %%%%%%%%%%%%%%%%%%%% Disclosure %%%%%%%%%%%%%%%%%%%% *****/
+proc sort data=l5.Disclosure&yymm out=Disclosure nodupkey;
+by serialno ;
+run ;
+
+
+%macro in_process;
+
+%do i = &s_cut %to &e_cut ;
+
+
+/*** %%%%%%%%%%%%%%%%%%%% LI Month %%%%%%%%%%%%%%%%%%%% *****/
+/****  Added %if %then %do %else statements for LI, LI_5y, kabarai_payment to decrease execution time  ****/
+
+	/**LI ALL**/   
+%if &i=&s_cut %then %do;
+	data li LI_All;
+	set	
+		%do j = 1 %to &s_cut;
+			l2.li_cust&&yymm&j(keep=serialno li002 li003 where=(li002=1))
+		%end;
+		;
+	run;
+	proc sort data = li;
+	by	serialno decending	li003;
+	run ;
+		
+	proc sort data = li(keep= serialno li003 rename=(li003=li_month)) nodupkey out=li ;
+	by	serialno ;
+	run ;
+%end;
+
+%else %if &i>&s_cut %then %do;
+	data Li_All;
+	set LI_All
+		l2.li_cust&&yymm&i(keep=serialno li002 li003 where=(li002=1));
+	run;	
+
+	proc sort data = Li_All;
+	by	serialno decending	li003;
+	run ;
+	
+	proc sort data = Li_All(keep= serialno li003 rename=(li003=li_month)) nodupkey out=LI;
+	by	serialno ;
+	run ;
+%end;
+	/***********/
+
+	/**LI 5YR**/
+%if &i=&s_cut %then %do;
+	data	li_5y li_5yALL;
+	set	
+		%do j =101 %to &s_cut;/* 101=0805 date of oldest existing dataset*/
+			l2.li_cust_drop&&yymm&j(keep=serialno li002 li003 where=(li002=1))
+		%end;
+		;
+	run;
+	proc sort data = li_5y;
+	by	serialno decending	li003;
+	run ;
+		
+	proc sort data = li_5y(keep= serialno li003 rename=(li003=li_month)) nodupkey out=li_5y;
+	by	serialno ;
+	run ;
+%end;
+
+%else %if &i>&s_cut %then %do;
+	data li_5yALL;
+	set li_5yALL
+		l2.li_cust_drop&&yymm&i(keep=serialno li002 li003 where=(li002=1));
+	run;	
+
+	proc sort data = li_5yALL;
+	by	serialno decending	li003;
+	run ;
+	
+	proc sort data = li_5yALL(keep= serialno li003 rename=(li003=li_month)) nodupkey out=li_5y;
+	by	serialno ;
+	run ;
+%end;
+	/***********/
+
+	data	li_month (keep=serialno li_month) ;
+	merge	li		(in=a /*keep=serialno li_month*/ rename=(li_month=li_m1))
+			li_5y	(in=b /*keep=serialno li_month*/ rename=(li_month=li_m2)) ;
+	by	serialno ;
+	if	a or b ;
+
+	format	li_month YYMMDD10. ;
+	if	a=1		then	li_month = li_m1 ;
+	else if	b=1		then	li_month = li_m2 ;
+	else				li_month = '31dec9999'd ;
+
+	run ; 
+	
+	proc sort data = li_month ;
+	by	serialno decending	li_month ; run ;
+	
+	proc sort data = li_month nodupkey ;
+	by	serialno ; run ;
+
+
+/***** Payout *****/
+%if &i=&s_cut %then %do;
+	data kabarai_payout(keep=serialno) Kab_PO(keep=serialno);
+	set	
+	%do j = 35 %to &s_cut; /* 35=0211 date of oldest existing dataset*/
+		l5.payout&&yymm&j(keep=serialno Payout_Month where=(Payout_Month <=intnx('day',intnx('month',mdy(%substr(&&yymm&i,3,2),01,%substr(&&yymm&i,1,2)),1),-1)))
+	%end ;
+	;
+	run ;
+
+	proc sort data=kabarai_payout nodupkey;
+	by serialno;
+	run ;
+%end;
+
+%else %if &i>&s_cut %then %do;
+	data Kab_PO(keep=serialno);
+	set Kab_PO
+		l5.payout&&yymm&i(keep=serialno Payout_Month where=(Payout_Month <=intnx('day',intnx('month',mdy(%substr(&&yymm&i,3,2),01,%substr(&&yymm&i,1,2)),1),-1)));
+	run;
+
+	proc sort data=Kab_PO nodupkey out=kabarai_payout;
+	by serialno;
+	run ;
+%end;
+
+
+/*** %%%%%%%%%%%%%%%%%%%% Disclosure %%%%%%%%%%%%%%%%%%%% *****/
+
+data	SBNP (keep=serialno) ;
+set	l5.SBNP_LSC&&yymm&i;
+run ;
+proc sort data=SBNP nodupkey ;
+by serialno ;
+run ;
+
+
+data c1;
+set l1.cust&&yymm&i;
+
+if 	legal_type not in(0,2) and book='OB' and ac15=0 /*和解区分*/ /*DEFINITION used to create l4.Onbook_Legal_InventoryYYMM.*/
+	then do;
+	legal_inventory=1;
+	onbook_inventory_type=legal_type;end;
+else legal_inventory=0;
+
+if	book in('OB','WO','PO','PO5Y','PO10Y') and
+	   (c027 in(5,19,20,41,42,55,56,70,74,75,76,77,79,80,81) or
+		c028 in(5,19,20,41,42,55,56,70,74,75,76,77,79,80,81) or
+		c029 in(5,19,20,41,42,55,56,70,74,75,76,77,79,80,81) or
+		c030 in(5,19,20,41,42,55,56,70,74,75,76,77,79,80,81) or
+		c031 in(5,19,20,41,42,55,56,70,74,75,76,77,79,80,81)) or
+		legal_inventory=1 ;
+
+/*NOTE:
+5	調停（除く特定調停）
+19	弁護士交渉中
+20	弁護士受訴
+41	特定調停
+42	個人債務者再生
+55	司法書士介入
+56	調停和解済
+70	代理権付司法書士
+74	司法書士和解済
+75	民事再生和解済
+76	訴訟（除く当社申立）
+77	一般司法書士和解済
+79	弁護士和解済
+80	本人及び公的機関の過払主張
+81	本人及び公的機関の過払和解済*/
+run ;
+proc sort data=c1 presorted;by serialno;run;
+
+data	home.in_process_&&yymm&i ;
+merge	c1					(in=a rename=(
+							c188 = M2_1 
+							c189 = M2_2
+							c190 = M2_3
+							c191 = M2_4
+							c192 = M2_5 
+							c193 = M2_1_DT 
+							c194 = M2_2_DT 
+							c195 = M2_3_DT 
+							c196 = M2_4_DT 
+							c197 = M2_5_DT))
+		li_month			(in=b keep=serialno li_month)
+		kabarai_payout		(in=c keep=serialno			)
+		SBNP				(in=d keep=serialno			)
+		master.irrl_balance&&yymm&i /* 20130409：参照先をmasterからsunshineへ変更 */
+							(in= i keep=serialno irrl_balance)
+		Disclosure			(in= r keep=Serialno  
+							Disclosure_DT1			
+							Disclosure_DT2			
+							Disclosure_DT3			
+							MaxIRRL_Balance			
+							Kabarai_Claim_Amount		
+							Negotiation_Amount		
+							Result);		
+by	serialno ;
+
+if	a=1 ;
+if	c=1	then	cashout= 1 ;
+else			cashout= 0 ;
+
+if	d=1	then	sbnp=1 ;
+else			sbnp=0 ;
+
+
+length	Claim_Type	$20
+	Claim_Person	$20
+	Settlement	$20
+	irrl_flag	$20 
+	bal_flag	$20
+	trans_flag	$20;
+
+format
+	c003		YYMMDD10. 
+	M2_1_DT		YYMMDD10. 
+	M2_2_DT		YYMMDD10. 
+	M2_3_DT		YYMMDD10. 
+	M2_4_DT		YYMMDD10. 
+	M2_5_DT		YYMMDD10. 
+	M2_Date		YYMMDD10.
+	M2_Month	YYMMDD10. 
+	Disclosure_month YYMMDD10. ;
+
+if	Disclosure_DT1 not in( . , '31dec9999'd , 0 )	and
+	Disclosure_DT2 not in( . , '31dec9999'd , 0 )	and
+	Disclosure_DT3 not in( . , '31dec9999'd , 0 )
+	then	Disclosure_month=intnx('day',intnx('month', min(Disclosure_DT1,Disclosure_DT2,Disclosure_DT3) ,1),-1) ;
+else	Disclosure_month= . ;
+
+
+/********** Month from LI **********/
+	if	li_month =.	then mos_li=.;
+	else mos_li=intck('month',li_month,c003);
+
+	if	li_month=.	then year_li=.;
+	else year_li=int(mos_li/12)	;
+
+/***** IRRL Flag *****/
+if	irrl_balance<0	and irrl_balance ne .	then	irrl_flag='-' 	;
+else if	irrl_balance=0	and irrl_balance ne .	then	irrl_flag='0' 	;
+else if	irrl_balance>0	and irrl_balance ne .	then	irrl_flag='+' 	;
+else							irrl_flag='NA'	;		
+
+/***** IRRL Flag 1 *****/
+if	irrl_balance=-1	then	irrl_flag1='-1' 	;
+else if	irrl_balance<0	and irrl_balance ne .	then	irrl_flag1='-' 	;
+else if	irrl_balance=0	and irrl_balance ne .	then	irrl_flag1='0' 	;
+else if	irrl_balance>0	and irrl_balance ne .	then	irrl_flag1='+' 	;
+else							irrl_flag1='NA'	;	
+
+/***** Balance Flag *****/
+if	ac28>0	and ac28 ne .	then	bal_flag='bal>0' ; /*ac28 = 実行残*/
+else					bal_flag='bal<=0';
+
+/***** Waiver *****/
+if	ac15=2			then	waiver=1 ; /*ac15 = 和解区分*/
+else					waiver=0 ;
+
+
+/***** Legal Type *****/
+	array bl(*) c027 - c031 ;
+	if	bl(1)=1 
+	or 	bl(2)=1 
+	or 	bl(3)=1 
+	or 	bl(4)=1 
+	or 	bl(5)=1				then	legal_type=1 ;
+
+	%if	&&yymm&i>=0809	%then	%do ;
+	else if	M2_1=238 
+	or	M2_2=238 
+	or	M2_3=238 
+	or	M2_4=238 
+	or	M2_5=238			then	legal_type=1.5 ; 
+					%end ;
+
+	else if	bl(1)=2 
+	or	bl(2)=2
+	or	bl(3)=2
+	or	bl(4)=2
+	or	bl(5)=2				then	legal_type=2 ;
+
+	else if bl(1) in (42,75) 
+	or 	bl(2) in (42,75) 
+	or 	bl(3) in (42,75) 
+	or	bl(4) in (42,75)
+	or 	bl(5) in (42,75) 		then	legal_type=3 ;
+
+	else if bl(1) in (19,20,79) 
+	or 	bl(2) in (19,20,79) 
+	or 	bl(3) in (19,20,79) 
+	or	bl(4) in (19,20,79) 
+	or 	bl(5) in (19,20,79) 		then	legal_type=4 ;
+
+	else if bl(1) in (70,74) 
+	or 	bl(2) in (70,74) 
+	or 	bl(3) in (70,74) 
+	or	bl(4) in (70,74) 
+	or 	bl(5) in (70,74)		then	legal_type=5 ;
+
+	else if bl(1) in (5,41,56) 
+	or 	bl(2) in (5,41,56) 
+	or 	bl(3) in (5,41,56) 
+	or	bl(4) in (5,41,56) 
+	or 	bl(5) in (5,41,56)		then	legal_type=6 ;
+
+	else if bl(1) in (55,77) 
+	or 	bl(2) in (55,77)
+	or	bl(3) in (55,77)
+	or	bl(4) in (55,77) 
+	or 	bl(5) in (55,77) 		then	legal_type=7 ;
+
+	else if bl(1) in (80,81) 
+	or 	bl(2) in (80,81) 
+	or 	bl(3) in (80,81) 
+	or	bl(4) in (80,81) 
+	or 	bl(5) in (80,81) 		then	legal_type=8 ;
+
+	else						legal_type=0 ;
+
+
+	/*************************** Claim_Type ******************************/
+	if	bl(1) in(20,76)  /*20=弁護士受訴 76=訴訟（除く当社申立）*/
+	or 	bl(2) in(20,76)
+	or 	bl(3) in(20,76)
+	or 	bl(4) in(20,76)
+	or 	bl(5) in(20,76)			then	Claim_Type='Liti'	;
+	else						Claim_Type='Non_Liti'	;	
+	
+
+	/***************************** Claim_Person *******************************/
+	if 	bl(1) in(19,20,79)
+	or 	bl(2) in(19,20,79)
+	or 	bl(3) in(19,20,79)
+	or 	bl(4) in(19,20,79)
+	or 	bl(5) in(19,20,79)		then 	Claim_Person='Lawyer'	;
+
+	else if bl(1) in(70,74,55,77)
+	or 	bl(2) in(70,74,55,77)
+	or 	bl(3) in(70,74,55,77)
+	or 	bl(4) in(70,74,55,77)
+	or 	bl(5) in(70,74,55,77)		then 	Claim_Person='Shiho'	;
+
+	else if bl(1) in(80,81)
+	or 	bl(2) in(80,81)
+	or 	bl(3) in(80,81)
+	or 	bl(4) in(80,81)
+	or 	bl(5) in(80,81)			then 	Claim_Person='RP'	;
+	else						Claim_Person='NA'	;
+
+
+/*****M2 *****/
+	if	(	M2_1=809 
+		or 	M2_2=809 
+		or 	M2_3=809 
+		or 	M2_4=809
+		or	M2_5=809	)				then	M2=809	;
+
+	else if	
+		(	M2_1=324 
+		or 	M2_2=324 
+		or 	M2_3=324 
+		or 	M2_4=324
+		or	M2_5=324	)				then	M2=324	;
+
+	else if	(	M2_1=803 
+		or 	M2_2=803 
+		or 	M2_3=803 
+		or 	M2_4=803
+		or	M2_5=803	)				then	M2=803	;
+
+	else if	(	M2_1=806
+		or 	M2_2=806
+		or 	M2_3=806
+		or 	M2_4=806
+		or	M2_5=806	)				then	M2=806	;
+
+	else									M2=0	;
+
+
+/***** M2_Date *****/
+	
+	if	M2=809 then
+			do ;
+			if	M2_1=809	then	M2_Date= M2_1_DT ;
+			else if M2_2=809	then	M2_Date= M2_2_DT ;
+			else if M2_3=809	then	M2_Date= M2_3_DT ;
+			else if M2_4=809	then	M2_Date= M2_4_DT ;
+			else				M2_Date= M2_5_DT ;
+			end ;
+
+	else if	M2=324	then	
+			do ;
+			if	M2_1=324	then	M2_Date= M2_1_DT ;
+			else if M2_2=324	then	M2_Date= M2_2_DT ;
+			else if M2_3=324	then	M2_Date= M2_3_DT ;
+			else if M2_4=324	then	M2_Date= M2_4_DT ;
+			else				M2_Date= M2_5_DT ;
+			end ;
+
+	else if	M2=803 then
+			do ;
+			if	M2_1=803	then	M2_Date= M2_1_DT ;
+			else if M2_2=803	then	M2_Date= M2_2_DT ;
+			else if M2_3=803	then	M2_Date= M2_3_DT ;
+			else if M2_4=803	then	M2_Date= M2_4_DT ;
+			else				M2_Date= M2_5_DT ;
+			end ;
+
+	else if	M2=806	then	
+			do ;
+			if	M2_1=806	then	M2_Date= M2_1_DT ;
+			else if M2_2=806	then	M2_Date= M2_2_DT ;
+			else if M2_3=806	then	M2_Date= M2_3_DT ;
+			else if M2_4=806	then	M2_Date= M2_4_DT ;
+			else				M2_Date= M2_5_DT ;
+			end ;
+
+	else		do ;
+							M2_Date=.	 ;
+			end ;
+
+/*****M2_Month *****/
+	format	M2_Month YYMMDD10. ;
+	if	M2_Date=.			then	M2_Month=. ;
+	else						M2_Month=intnx('day',intnx('month',M2_Date,1),-1) ;
+
+
+/***** Settlement Flag *****/
+	if	M2 in(324,809,803)		then	Settlement='Settled' ;
+	else						Settlement='UnSettled' ;
+
+
+/***** Pre & Post Flag *****/
+	if	c042 =  '31dec9999'd and c042 ne .		then	trans_flag='NA' ;	
+	else if	c042 <= '31oct1993'd and c042 ne .		then	trans_flag='pre93' ;
+	else								trans_flag='post93' ;
+
+
+/***** Kabarai Inventory Flag *****/
+if	irrl_flag= '-' and
+	cashout=0 and
+	sbnp=0 and
+	(M2=806 and	/*806=過払返還請求交渉中*/
+				(mos_li>=0 and mos_li<=23 or /*介入してから2年いない*/
+				intck('month',M2_month,c003)>=0 and 
+				intck('month',M2_month,c003)<=23 and mos_li=.) or/*SM2登録日付は当時レポートから2年いない*/
+				M2=0 and mos_li>=0 and mos_li<=23)
+then	kabarai_inventory=1 ;
+else	kabarai_inventory=0 ;
+
+/* TEMPORARAY EDA FLAG */
+if	cashout=0 and
+	sbnp=0 and
+	(M2=806 and	/*806=過払返還請求交渉中*/
+				(mos_li>=0 and mos_li<=23 or /*介入してから2年いない*/
+				intck('month',M2_month,c003)>=0 and 
+				intck('month',M2_month,c003)<=23 and mos_li=.) or/*SM2登録日付は当時レポートから2年いない*/
+				M2=0 and mos_li>=0 and mos_li<=23)
+then	Temp_IRRL=1 ;
+else	Temp_IRRL=0 ;
+
+/***** Target *****/
+if	legal_inventory=1 or kabarai_inventory=1 /*Temp_IRRL=1*/ ;	
+run ;
+
+%end ;
+
+proc sql;
+drop table c1,convert,disclosure,Kab_PO,Kabarai_payout,Li,LI_5y,Li_5yall,LI_all,LI_Month,SBNP;quit;
+
+%mend in_process;
+%in_process;
+
+
+/**** METADATA ***/
+/*Exploratory*/
+proc sql;
+create table InPROCESS_Metadata as
+select memname,nobs,nvar,crdate
+from dictionary.tables
+where libname='HOME' and substr(memname,1,10)='IN_PROCESS';
+quit;
+/***************/
+
+
+%macro inve2 ;
+
+%do i = &s_cut %to &e_cut ;
+
+proc sql ;
+create table sum_in_process_&&yymm&i as 
+
+select
+	c003 as YM format=YYMMDD10.,
+	Portfolio,
+	gz_seg,
+	M2,
+	irrl_flag,
+	cashout,
+	sbnp,
+	Claim_Type,
+	kabarai_inventory,
+	legal_inventory,
+	book,
+	ac15 as wakai_flag,
+	se004,
+	trans_flag,
+	count(serialno) as count,
+	sum(irrl_balance/1000000) 	as irrl_mm,
+	sum(ac28/1000000)		as bal_mm
+
+from	
+	home.in_process_&&yymm&i
+group by
+	YM,
+	Portfolio,
+	gz_seg,
+	M2,
+	irrl_flag,
+	cashout,
+	sbnp,
+	Claim_Type,
+	kabarai_inventory,
+	legal_inventory,
+	book,
+	wakai_flag,
+	se004,
+	trans_flag ;
+quit ;
+%end ;
+
+
+data	sum_in_process ;
+set	%do  i = &s_cut %to &e_cut ;
+	sum_in_process_&&yymm&i
+	%end ;
+	;
+run ;
+
+%mend ;
+%inve2 ;
+
+proc export data = sum_in_process
+OUTFILE= "~/L12_sum_in_process.csv"
+dbms = csv replace ;
+run ;
+
