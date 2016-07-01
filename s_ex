@@ -1,0 +1,324 @@
+options nomprint;
+
+libname 	home	"~/";
+libname	l5		"/share/sfrisk/legal/5_kabarai" ;
+libname ddb '~/dairi_DB';
+
+%include "/odd/lib/sf-dwh.key";
+
+/*Exploratory*/
+proc sql;
+create table SBNP_Metadata as
+select memname,nobs,nvar,crdate
+from dictionary.tables
+where libname='L5' and substr(memname,1,4)='SBNP';
+quit;
+/*************/
+
+
+/*%%%%%%%%%% CP Manual Update %%%%%%%%%%*/
+
+/* yymm161=1305 */
+/* yymm175=1407
+   yymm176=1408
+   yymm177=1409*/
+
+%let s_cut = 146 ;  	/*CHANGE*/
+%let e_cut = 182 ;		/*CHANGE*/
+
+
+/*** Initial Date ***/
+%let ST='01jan2000'd; 	/*Note: '01jan2000'd --> s_cut=1*/
+       
+data _null_;		/*n= months elapsed from s_cut=1 to today() nはs_cut=1～本日の間の経過月数*/
+        call symput ("n",intck("month",&ST-1,intnx('day',intnx('month',today(),0),-1))) ;
+run;
+
+/***** Check *****/
+%put %nrstr(&n =) &n;
+data _null_;	/*creates monthly macvar series from '01jan2000'd to today()*/
+	%macro YM1;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&ST-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%mend YM1;
+	%YM1
+run;
+
+%macro YM2 ; /*output to log all yymm&i macvar*/
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i;
+	%end ;
+%mend YM2;
+%YM2 
+
+
+/**********/
+%macro SBNP;
+
+%do i = &s_cut %to &e_cut;
+
+data	sbnp_lsc&&yymm&i;
+	set l5.sbnp_lsc&&yymm&i;
+if year(Payout_Agreed_Month)>year(CP_Month) then Months=month(Payout_Agreed_Month)-month(CP_Month)+12;
+else Months=month(Payout_Agreed_Month)-month(CP_Month);
+
+Payout_Amount=Payout_Amount*(-1);
+
+length Payout_Range $10;
+if Payout_Amount<500001 then Payout_Range='0 - 0.5';
+else if Payout_Amount<1000001  then Payout_Range='0.5 - 1.0';
+else if Payout_Amount<1500001  then Payout_Range='1.0 - 1.5';
+else if Payout_Amount<2000001  then Payout_Range='1.5 - 2.0';
+else Payout_Range='> 2.0';
+
+*Payout_AMT_MM=Payout_Amount/1000000;
+where portfolio in('AF','PL','XS','WC');
+run;
+
+
+
+/*%%%%%%%%%%%%%%%%   START Law Office Names   %%%%%%%%%%%%%%%%%*/
+ 
+/* ----------Agent_noで代理人DBと結合する為、介入DBを参照し、InventoryファイルにAgent_Noを作成---------	*/
+	data _null_;
+		a = mdy(%substr(&&yymm&i,3,2), 1, %substr(&&yymm&i,1,2));
+		/*b = put(a, date9.); delete*/
+		b = put(intnx("month", a, 0, "end"), date9.);
+		call symput("eom", b);
+	run;
+
+	%put EOM = &eom;
+
+%if &i=&s_cut %then %do;
+data work.li(rename=(
+			_COL0 = no
+			_COL1 = serialno
+			_COL3 = l_no	/*弁護士番号*/
+			_COL4 = l_in_date	/*弁護士介入年月日*/
+			_COL5 = l_out_date	/*弁護士辞任年月日*/
+			_COL6 = s_no	/*司法書士番号*/
+			_COL7 = s_in_date	/*司法書士介入年月日*/
+			_COL8 = s_out_date));	/*司法書士辞任年月日*/
+set oralib.TBN_SBSHKREC(drop=_COL2) /*店番*/;	/* 介入DB */
+run;
+
+data work.li;
+	set work.li;
+if l_no ne 0 then do;
+	if datepart(l_in_date) <= "&eom"d <= datepart(l_out_date) then
+		agent_no = compress("L" || l_no); end;
+
+if agent_no = '' and s_no ne 0 then do;
+	if datepart(s_in_date) <= "&eom"d <= datepart(s_out_date) then
+		agent_no = compress("S" || s_no);end;
+		
+RP= (agent_no = '');		/* Right Party フラグ */
+run;
+proc sort data=work.li; by serialno;run;
+%end;
+
+%else %if &i>&s_cut %then %do;
+data work.li;
+	set work.li;
+
+if l_no ne 0 then do;
+	if datepart(l_in_date) <= "&eom"d <= datepart(l_out_date) then
+		agent_no = compress("L" || l_no); end;
+
+if agent_no = '' and s_no ne 0 then do;
+	if datepart(s_in_date) <= "&eom"d <= datepart(s_out_date) then
+		agent_no = compress("S" || s_no); end;
+		
+RP= (agent_no = '');		/* Right Party フラグ */
+run;
+
+%end;
+
+proc sort data=sbnp_lsc&&yymm&i;by serialno;run;
+
+data sbnp_lsc&&yymm&i;
+merge  sbnp_lsc&&yymm&i(in=t1) 
+		work.li (in=t2 keep=serialno agent_no);
+by serialno;
+if t1;
+run;
+
+
+/* ------------------------最新代理人DBと結合------------------------*/
+proc sort data=sbnp_lsc&&yymm&i; by agent_no;run;	
+
+data sbnp_lsc&&yymm&i;
+		merge	sbnp_lsc&&yymm&i(in=t1)
+			ddb.ddb1502(keep=Agent_No GC GN);			/*CHANGE*/  
+		by	agent_no;
+if t1; 				/*新宿グループ*/
+if  GC='G10' or 	/*G10	G_新宿事務所*/
+	GC='G5455' or	/*G5455	G_東京新宿法律事務所*/
+	GC='G6255' or	/*G6255	G_有岡法律事務所*/
+	GC='G1366' or	/*G1366	G_ＭａｒｔｉａｌＡｒｔｓ*/
+	GC='G24776' or	/*G24776	G_法律事務所ナビアス*/
+	GC='G5071'		/*G5071	G_大江戸下町法律事務所*/
+	then Jimusho='Shinjuku';
+else  Jimusho='Other';
+	run;
+
+/*%%%%%%%%%%%%%%%%   FIN Law Office Names   %%%%%%%%%%%%%%%%%*/
+
+
+proc sql;
+create table sbnp&&yymm&i as 
+select 	&&yymm&i as YYMM,Claim_Type,portfolio,gz_seg,Months,Payout_Range,Agent_No,
+		count(Serialno) as CNT,sum(Payout_Amount)/1000000 as Payout_AMT_MM,-sum(Max_IRRL_Bal)/1000000 as Max_IRRL_MM
+from sbnp_lsc&&yymm&i
+group by Claim_Type,portfolio,gz_seg,Months,Payout_Range,Agent_No
+order by Claim_Type,portfolio,gz_seg,Months,Payout_Range,Agent_No;quit;
+
+%end;
+
+data	sum_SBNP;
+set
+	%do i = &s_cut %to &e_cut ;
+	sbnp&&yymm&i
+	%end ;
+	;
+run ;
+
+proc sort data=sum_SBNP;by agent_no;run;
+
+data sum_SBNP3;
+		merge	sum_SBNP(in=t1)
+			ddb.ddb1502(keep=Agent_No GC GN);			/*CHANGE*/  
+		by	agent_no;
+if t1;
+if  GC='G10' or 	/*G10	G_新宿事務所*/
+	GC='G5455' or	/*G5455	G_東京新宿法律事務所*/
+	GC='G6255' or	/*G6255	G_有岡法律事務所*/
+	GC='G1366' or	/*G1366	G_ＭａｒｔｉａｌＡｒｔｓ*/
+	GC='G24776' or	/*G24776	G_法律事務所ナビアス*/
+	GC='G5071'		/*G5071	G_大江戸下町法律事務所*/
+	then Jimusho='Shinjuku';
+else if GC not in 
+('G2','G6','G1','G7','G12','G14','G5443','G5','G18','G6651','G3','G901','G119','G9','G6004','G23','G4588','G9034','G10212','G8748','G8204','G7695','G4818','G10142')
+then Jimusho='Other';
+else Jimusho=GN;
+
+RP= (agent_no = '');
+run;
+
+
+%mend SBNP;
+
+%sbnp
+/**********/
+
+proc export data =sum_SBNP3
+OUTFILE= "~/all_SBNP.csv" /*CHANGE*/
+dbms = csv replace ;
+run;
+
+
+
+/**CURRENT MONTH OUTPUT***/
+%let i=182;
+proc sql;
+create table aa as 
+select 	Claim_Type,portfolio,gz_seg,Months,Payout_Range,
+		count(Serialno) as CNT,sum(Payout_AMT_MM) as Payout_AMT_MM,-sum(Max_IRRL_Bal)/1000000 as Max_IRRL_MM
+from sbnp_lsc&&yymm&i
+group by Claim_Type,portfolio,gz_seg,Months,Payout_Range
+order by Claim_Type,portfolio,gz_seg,Months,Payout_Range;
+quit;
+
+
+proc export data =sbnp_lsc1501
+OUTFILE= "~/sbnp1502.csv" /*CHANGE*/
+dbms = csv replace ;
+run;
+
+
+/**ALL GRAPH OUTPUT***/
+filename SBNP "~/"; 
+
+/*	data _null_;
+		Start = mdy(%substr(&&yymm&s_cut,3,2), 1, %substr(&&yymm&s_cut,1,2));
+		call symput("Start_Date",put(intnx("month", start, 0, "end"), YYMMDDn8.));
+	run;
+	
+%put &&yymm&i &Start_Date;*/
+
+
+proc template;
+  define style styles.PK_CTheme1;
+  parent=styles.default;
+    class graphbackground / color=white;
+    class graphwalls / color=white;
+	class graphlegendbackground / color=white;
+	*class graphgridlines / linestyle=2 linethickness=50px;/*<< confirm change*/
+	class graphdata1 /color=CX008B8B contrastcolor=CX4dbfbc;
+	class graphdata2 /color=CXdaa520 contrastcolor=CXb8860b;
+	class graphdata3 /color=CXb22222 contrastcolor=CXcd5c5c;
+	class graphdata4 /color=CX58963C contrastcolor=CX008000;
+	class graphdata5 /color=CXA0522D contrastcolor=CXA0522D;
+	class graphdata6 /color=CX475A8D contrastcolor=CX475A8D;
+  end;
+run;
+ 
+ods trace on;
+ods graphics on / reset=all imagefmt=jpeg imagemap=on width=1140px height=400px noborder
+				  imagename='SBNP';
+ods listing image_dpi=300 sge=on gpath=sbnp style=PK_CTheme1;
+ods select all;
+
+*goptions colors=(CX008B8B CXdaa520 CXb22222);
+
+%let i=&s_cut;
+%let j=&e_cut;	
+
+proc sgplot data=sum_SBNP3;
+vbar YYMM / group=Claim_type response=Payout_AMT_MM stat=sum barwidth=.7;
+vline YYMM / group=Claim_type response=CNT stat=sum y2axis lineattrs=(pattern=solid thickness=3) transparency=.2;
+yaxis values=(0 to 10000 by 1000) grid label="Payout (JPY MM)";
+*refline 5000 / axis=y;
+refline 10000 9000 8000 7000 6000 5000 4000 3000 2000 1000 / yaxis;
+xaxis fitpolicy=thin;
+y2axis values=(0 to 10000 by 2000) label="Accounts (Count)";
+keylegend /location=inside position=ne across=2 down=2 border;
+title "SBNP Totals 20&&yymm&i to 20&&yymm&j";
+run;
+
+/*
+proc sgplot data=sum_SBNP3;
+vbar YYMM / group=Jimusho response=Payout_AMT_MM stat=sum barwidth=.7;
+*vline YYMM / group=Claim_type response=CNT stat=sum y2axis lineattrs=(pattern=solid thickness=3) transparency=.2;
+yaxis values=(0 to 10000 by 1000) grid label="Payout (JPY MM)";
+*refline 5000 / axis=y;
+xaxis fitpolicy=thin;
+*y2axis values=(0 to 10000 by 2000) label="Accounts (Count)";
+keylegend /location=inside position=ne across=2 down=2 border;
+title "SBNP Totals 20&&yymm&i to 20&&yymm&j by Law Office";
+run;*/
+
+/**Exploratory**/
+proc freq data=sbnp_lsc1411;
+tables Months /norow nopercent nocol norow;
+run;
+
+proc means data=sbnp_lsc1411 n sum;
+var Payout_AMT_MM;
+class Months;
+run;
+
+
+
+/****/
+
+
+%let i=&s_cut;
+%put %sysfunc(mdy(%substr(strip(&&yymm&i),3,2),1,%substr(strip(&&yymm&i),1,2)),yymmn4.);
+
+data aa;
+x=strip(&&yymm&i);
+y=mdy(substr(strip(&&yymm&i),3,2),1,substr(strip(&&yymm&i),1,2));
+format y yymmn4.;
+run;
