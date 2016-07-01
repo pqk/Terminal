@@ -1,0 +1,148 @@
+libname 	home	"~/";
+
+/***** AT *****/
+data _null_ ;
+  s_cut = intck('MONTH','31Jan2000'd,today()) ;
+  call symput('s_cut',compress(s_cut));
+run;
+%put %nrstr(&s_cut =) &s_cut ;
+
+data _null_ ;
+  e_cut = intck('MONTH','31Jan2000'd,today()) ;
+  call symput('e_cut',compress(e_cut));
+run;
+%put %nrstr(&e_cut =) &e_cut ;
+
+
+/*** Initial Date ***/
+%let ST="01jan2000"d;
+data _null_ ;
+        call symput ("n",intck("month",&ST-1,intnx('day',intnx('month',today(),0),-1)));
+run;
+/***** Check *****/
+%put %nrstr(&n =) &n ;
+data _null_;
+	%macro YM1 ;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&ST-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%mend ;
+	%YM1 ;
+run;
+%macro YM2 ;
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i;
+	%end ;
+%mend;
+%YM2 ;
+
+
+/*************************************/
+/**** Build WOフラッグ設定日 file ***/
+/*************************************/
+
+%let	s_cut= 74 ; /*CUST0602以下からはWOフラッグ設定日の変数は存在しない*/
+%let	e_cut= 195 ; /*CHANGE */
+
+%macro get_woflag;
+
+%do i = &e_cut %to &s_cut %by -1;
+	%let	j=%eval(&i-1) ;
+	
+	%if &&yymm&i=&&yymm&e_cut %then %do; /*CHANGE to most recent*/
+	data  master (drop=C&&yymm&j..199);
+	merge risklib.cust&&yymm&i(in=t1 keep=serialno C&&yymm&i..199)
+		  risklib.cust&&yymm&j(in=t2 keep=serialno C&&yymm&j..199);
+	by serialno;
+	
+	if missing(C&&yymm&e_cut..199) then C&&yymm&e_cut..199=C&&yymm&j..199;
+		
+	run;
+	proc sort data=master;by serialno;run;
+	%end;
+	
+	%if &&yymm&i<&&yymm&e_cut %then %do;
+	data  master (drop=C&&yymm&j..199);
+	merge master(in=t1)
+		  risklib.cust&&yymm&j(in=t2 keep=serialno C&&yymm&j..199);
+	by serialno;
+	
+	if missing(C&&yymm&e_cut..199) then C&&yymm&e_cut..199=C&&yymm&j..199;
+		
+	run;
+	proc sort data=master;by serialno;run;
+	%end;
+%end;
+
+%mend get_woflag;
+
+%get_woflag
+
+
+/*** END MARKER ***/
+options nonumber;
+data z;z="END OF LINE";run;
+title "END OF LINE";
+proc print data=z noobs;run;
+title;
+options number;
+/****************/
+
+
+data home.WO_Flag_Master;
+set master;
+run;
+
+data home.WO_Flag_Master;
+set home.WO_Flag_Master1;
+length Wo_Flag $8;
+if C1603199<'30Sep2008'd then Wo_Flag="Pre0809"; /*old C1512199*/
+else if C1603199>='30Sep2008'd then Wo_Flag="Post0809";
+else Wo_Flag="NA";
+run;
+
+
+
+/*************************************/
+/**************   END  ***************/
+/*************************************/
+
+
+
+/*************** EDA ***************/
+proc freq data=a;
+tables Wo_Flag /norow nocol nopercent nocum;
+run;
+
+
+data a;
+set home.wo_flag_master;
+format test date9.;
+test=intnx('month',c1512199,0,'E');
+if test^=c1512199 then check=1;
+else check=0;
+run;
+
+proc sql;
+create table b as
+select unique(c1512199)
+from a
+where check=1;
+quit;
+
+proc export data = b
+OUTFILE= "~/wo_b.csv"
+dbms = csv replace ;
+run ;
+
+
+
+data c;
+set home.wo_flag_master;
+if c1512199='8sep2008'd or c1512199='24sep2008'd;
+run;
+
+data c;
+merge cust0809(in=t1 keep=serialno book1)
+	home.wo_flag_master;
+	by 
