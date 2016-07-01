@@ -1,0 +1,849 @@
+/************************************************************************************************
+*                                                                                               *
+*                                                                                               *
+*                                       Daily_Legal_Intervention                                *
+*                                                                                               *
+*                                                                       Update:2013/2/4         *
+*************************************************************************************************/
+
+/*-----------------------------------------------------------------------------------------------
+
+2008/08 より    SonyをPLから除外
+2008/09 より    WcardをPLに含む
+2010/04 より    AffiliateとXsellを含む
+2010/06 より　　IRRL Balanceを追加 Balance-IRRL Balance= GZ Exposure
+2013/01 より　　l_2monthの年数が1月ずれるので修正した
+2013/04 より　　次月を土日跨ぎで迎えた際の不具合を修正した
+------------------------------------------------------------------------------------------------*/
+
+
+/*------------------------------*/
+/*       1. libname setting     */
+/*------------------------------*/
+
+libname dmaster         "/share/sfrisk/legal/8_other/masterYYMMDD"                              ;
+libname dlegal          "/share/sfrisk/legal/8_other/legal_interventionYYMMDD"                  ;
+libname rpa             "/share/sfrisk/rpa"                                                            ;
+libname sunshine        "/share/sfrisk/sunshine"                                                ;
+
+
+
+/*------------------------------*/
+/*        2. Date setting       */
+/*------------------------------*/
+
+data _null_ ;
+        dt1     =  put(year(intnx('day',intnx('month',(today()-1),-1),-1)),z4.) || put(month(intnx('day',intnx('month',(today()-1), -1),-1) -1),z2.) ;	
+	call symput('last_yymm1',substr(dt1,3,4))  ;
+
+        dt2     =  put(year(intnx('month',today()-1, -1)),z4.)
+                || put(month(intnx('month',today()-1, -1)),z2.)
+                || put(day(intnx('month',today()-1, -1)),z2.)   ;
+
+        dt3     = put(year(today()-1),z4.)
+                || put(month(today()-1),z2.)
+                || put(day(today()-1),z2.)                      ;
+
+        call symput('l_2month',substr(dt1,3,4))         ;
+        call symput('l_month',substr(dt2,3,4))          ;
+        call symput('yymm',substr(dt3,3,4))             ;
+        call symput('yymmdd',substr(dt3,3,6))           ;
+run ;
+
+
+/*------------------------------*/
+/*      3. Select Biz_day       */
+/*------------------------------*/
+data select_day ;
+        set dlegal.biz_day      ;
+        today=today()           ;
+        if cut_date=today       ;
+        if month(cut_date) = month(biz_date) then first_day = 0 ;
+        else first_day=1        ;
+
+        call symputx('first_day',first_day, "G")      ;
+run     ;
+
+%put %nrstr(&first_day =)  &first_day   ;
+
+%macro obscnt(data=,mvar=);
+    %global &mvar;
+    data _null_;
+      set &data nobs=cnt;
+      call symput("&mvar",left(put(cnt,8.)));
+      stop;
+    run;
+%mend;
+%obscnt(data=select_day,mvar=obs);
+
+%macro daily_li;
+%if (&obs=1) %then %do  ;
+
+
+/********************************************************************************/
+/**************************** 月跨ぎ用の対応を追加 ******************************/
+/************** 1か月前及び2ヶ月前の日付を正しく認識しない点を修正 **************/
+/********************************************************************************/
+/* 条件比較用のマクロ変数を定義 */
+data _null_;
+	call symputx("temp1", put(intnx("month", today()-1, -1), yymmdd10.));
+	call symputx("temp2", put(intnx("month", today(), -1), yymmdd10.));
+
+run;
+
+/* 定義したマクロ変数をチェック */
+%put %nrstr(&temp1=) &temp1;
+%put %nrstr(&temp2=) &temp2;
+
+/* 第一営業日が月初から起算して1日以上空いたか否かを判別 */
+%if 	&first_day = 1 and
+	&temp1 = &temp2
+
+%then %do;
+
+	data _null_;
+
+		/* PG実行日前日の日付を返す */
+		dt_l0 = put( year( intnx("day", today(), -1, "end") ), z4. ) ||
+			put( month( intnx("day", today(), -1, "end") ), z2. ) ||
+			put( day( intnx("day", today(), -1, "end") ), z2. );
+
+		/* PG実行日から2ヶ月前の月末日付を返す */
+		dt_l1 = put( year( intnx("month", today()-1, -2, "end") ), z4. ) ||
+			put( month( intnx("month", today()-1, -2, "end") ), z2. ) ||
+			put( day( intnx("month", today()-1, -2, "end") ), z2. );
+
+		/* PG実行日から3ヶ月前の月末日付を返す */
+		dt_l2 = put( year( intnx("month", today()-1, -3, "end") ), z4. ) ||
+			put( month( intnx("month", today()-1, -3, "end") ), z2. ) ||
+			put( day( intnx("month", today()-1, -3, "end") ), z2. );
+
+		call symput( "yymm", substr(dt_l0, 3, 4) );
+		call symput( "yymmdd", substr(dt_l0, 3, 6) );
+		call symput( "l_month", substr(dt_l1, 3, 4) );
+		call symput( "l_2month", substr(dt_l2, 3, 4) );
+
+	run;
+
+%end;
+
+/***** Check  *****/
+%put %nrstr(&l_2month =) &l_2month      ;
+%put %nrstr(&l_month =) &l_month        ;
+%put %nrstr(&yymm =)    &yymm           ;
+%put %nrstr(&yymmdd =)  &yymmdd         ;
+
+
+/*------------------------------*/
+/*      4. Export from DWH      */
+/*------------------------------*/
+
+%include "/odd/lib/sf-dwh.key";
+
+
+/***** Customer Information *****/
+proc sql ;
+create table dmaster.master_cust&yymmdd as
+select
+
+        T1.会員一連番号                         as Serialno             format=10.,
+        T1.会員番号                             as No                   format=10.,
+        T1.店形態コード                         as Shop_type            format=10.,
+        T1.支社店番                             as Area                 format=10.,
+        T1.店番                                 as Shop_no              format=10.,
+        T1.顧客実行残                           as Balance              format=10.,
+        T1.移管元店番                           as Transfer_shop        format=10.,
+        T1.最終営業店番                         as Last_sale_shop       format=10.,
+        T1./*宣伝媒体ルート2*/_COL16            as c014                 format=10.,
+        T1.担保客区分                           as c044                 format=10.,
+        T1.来店区分                             as cu54                 format=$1.,
+        datepart(T1.当初貸付年月日DT)           as c042                 format=YYMMDD10.,
+
+        T1.社内メッセージコード1                as M1_1                 format=10.,
+        T1.社内メッセージコード2                as M1_2                 format=10.,
+        T1.社内メッセージコード3                as M1_3                 format=10.,
+
+        T1.社内メッセージ2コード1               as M2_1                 format=10.,
+        T1.社内メッセージ2コード2               as M2_2                 format=10.,
+        T1.社内メッセージ2コード3               as M2_3                 format=10.,
+        T1.社内メッセージ2コード4               as M2_4                 format=10.,
+        T1.社内メッセージ2コード5               as M2_5                 format=10.,
+
+        datepart(T1.社内メッセージ2登録年月日DT1)       as M2_1_DT      format=YYMMDD10.,
+        datepart(T1.社内メッセージ2登録年月日DT2)       as M2_2_DT      format=YYMMDD10.,
+        datepart(T1.社内メッセージ2登録年月日DT3)       as M2_3_DT      format=YYMMDD10.,
+        datepart(T1.社内メッセージ2登録年月日DT4)       as M2_4_DT      format=YYMMDD10.,
+        datepart(T1.社内メッセージ2登録年月日DT5)       as M2_5_DT      format=YYMMDD10.,
+
+        T1.ブルー要因区分1                      as BL1                  format=10.,
+        T1.ブルー要因区分2                      as BL2                  format=10.,
+        T1.ブルー要因区分3                      as BL3                  format=10.,
+        T1.ブルー要因区分4                      as BL4                  format=10.,
+        T1.ブルー要因区分5                      as BL5                  format=10.,
+
+        T1.和解客区分                           as Wakai                format=10.,
+        T1.貸倒れ元金残                         as Wo_balance           format=10.,
+        T1.貸倒れフラグ                         as Wo_flag              format=$12.,
+        datepart(T1.貸倒れ年月日DT)             as Wo_date              format=YYMMDD10.,
+        datepart(T1.貸倒れフラグ設定年月日DT)   as Wo_flag_date         format=YYMMDD10.,
+        T1.債権種別                             as Rena                 format=10.,
+        T1./*債権種別状況*/_COL229              as Rena2                format=10.
+
+from
+                oralib.VEW_JKOKSREC_N004 T1
+where
+        (
+                (
+                        (
+                                T1.ブルー要因区分1 in(1,2,42,75,19,20,79,70,74,5,41,56,55,77,80,81)
+                        or      T1.ブルー要因区分2 in(1,2,42,75,19,20,79,70,74,5,41,56,55,77,80,81)
+                        or      T1.ブルー要因区分3 in(1,2,42,75,19,20,79,70,74,5,41,56,55,77,80,81)
+                        or      T1.ブルー要因区分4 in(1,2,42,75,19,20,79,70,74,5,41,56,55,77,80,81)
+                        or      T1.ブルー要因区分5 in(1,2,42,75,19,20,79,70,74,5,41,56,55,77,80,81)
+                        or      T1.社内メッセージ2コード1 in(238)
+                        or      T1.社内メッセージ2コード2 in(238)
+                        or      T1.社内メッセージ2コード3 in(238)
+                        or      T1.社内メッセージ2コード4 in(238)
+                        or      T1.社内メッセージ2コード5 in(238)
+                        )
+                )
+        and     T1.社内メッセージ2コード1 ne 966
+        and     T1.社内メッセージ2コード2 ne 966
+        and     T1.社内メッセージ2コード3 ne 966
+        and     T1.社内メッセージ2コード4 ne 966
+        and     T1.社内メッセージ2コード5 ne 966
+
+        )
+;
+
+quit ;
+
+proc sort data = dmaster.master_cust&yymmdd nodupkey;
+by serialno ;
+run ;
+
+
+/***** Account Information *****/
+proc sql ;
+create table dmaster.master_acco&yymmdd as
+select
+
+        T1.会員一連番号         as      serialno,
+        sum(T1.実行残 )         as      ac28,
+        max(T1.和解区分)        as      ac15,
+        max(T1.担保区分 )       as      ac13
+
+from
+        oralib.VEW_JKOZSREC_N004 T1
+group by
+        T1.会員一連番号
+;
+quit    ;
+
+proc sort data=dmaster.master_acco&yymmdd nodupkey;
+by serialno ;
+run ;
+
+
+/*------------------------------*/
+/*      5. Setting LI DS        */
+/*------------------------------*/
+/* 月跨ぎはココでこける */
+
+/*
+option obs=1000 ;
+option obs=max;
+*/
+
+/*****  Legal Cust master *****/
+data    LI_occurrence ;
+
+        merge
+		/* 月跨ぎ用の対応 */
+                /* 	%if 	&first_day = 1 and
+				intck("month", today()-1, intnx("month", today(), -1)) ^= 0
+			%then %do;
+
+				risklib.cust&l_2month(	in = a
+
+							rename = ( 	c&l_2month.027 = c&l_month.027
+									c&l_2month.028 = c&l_month.028
+                                                        		c&l_2month.029 = c&l_month.029
+									c&l_2month.030 = c&l_month.030
+                                                        		c&l_2month.031 = c&l_month.031
+									c&l_2month.032 = c&l_month.032
+                                                        		c&l_2month.188 = c&l_month.188 
+									c&l_2month.189 = c&l_month.189
+                                                        		c&l_2month.190 = c&l_month.190 
+									c&l_2month.191 = c&l_month.191
+                                                        		c&l_2month.192 = c&l_month.192 
+									c&l_2month.047 = c&l_month.047
+                                                        		c&l_2month.051 = c&l_month.051 
+									c&l_2month.198 = c&l_month.198
+                                                        		c&l_2month.006 = c&l_month.006 
+									c&l_2month.040 = c&l_month.040
+                                                        		c&l_2month.041 = c&l_month.041
+                                                        		c&l_2month.042 = c&l_month.042
+							)
+				)
+
+			%end;
+		*/
+
+                risklib.cust&l_month            (in=a)
+
+/*
+                %else %do       ;
+                risklib.cust&l_month           (in=a
+                                                rename=(c&l_2month.027=c&l_month.027 c&l_2month.028=c&l_month.028
+                                                        c&l_2month.029=c&l_month.029 c&l_2month.030=c&l_month.030
+                                                        c&l_2month.031=c&l_month.031 c&l_2month.032=c&l_month.032
+                                                        c&l_2month.188=c&l_month.188 c&l_2month.189=c&l_month.189
+                                                        c&l_2month.190=c&l_month.190 c&l_2month.191=c&l_month.191
+                                                        c&l_2month.192=c&l_month.192 c&l_2month.047=c&l_month.047
+                                                        c&l_2month.051=c&l_month.051 c&l_2month.198=c&l_month.198
+                                                        c&l_2month.006=c&l_month.006 c&l_2month.040=c&l_month.040
+                                                        c&l_2month.041=c&l_month.041
+                                                        c&l_2month.042=c&l_month.042 )
+                                                )
+                %end    ;
+*/
+
+                dmaster.master_cust&yymmdd      (in=b)
+                dmaster.master_acco&yymmdd      (in=c)
+        ;
+        by serialno     ;
+
+
+        /* ---------- Current Legal Type ---------- */
+
+        if      BL1=1
+        or      BL2=1
+        or      BL3=1
+        or      BL4=1
+        or      BL5=1                                           then    this_type=1 ;
+
+        else if M2_1=238
+        or      M2_2=238
+        or      M2_3=238
+        or      M2_4=238
+        or      M2_5=238                                        then    this_type=1.5 ;
+
+        else if BL1=2 or BL2=2 or BL3=2 or BL4=2 or BL5=2
+                                                                then    this_type=2 ;
+
+        else if BL1 in (42,75) or BL2 in (42,75) or BL3 in (42,75)
+                        or BL4 in (42,75) or BL5 in (42,75)
+                                                                then    this_type=3 ;
+
+        else if BL1 in (19,20,79) or BL2 in (19,20,79) or BL3 in (19,20,79)
+                        or BL4 in (19,20,79) or BL5 in (19,20,79)
+                                                                then    this_type=4 ;
+
+        else if BL1 in (70,74) or BL2 in (70,74) or BL3 in (70,74)
+                        or BL4 in (70,74) or BL5 in (70,74)
+                                                                then    this_type=5 ;
+
+        else if BL1 in (5,41,56) or BL2 in (5,41,56) or BL3 in (5,41,56)
+                        or BL4 in (5,41,56) or BL5 in (5,41,56)
+                                                                then    this_type=6 ;
+
+        else if BL1 in (55,77) or BL2 in (55,77) or BL3 in (55,77)
+                        or BL4 in (55,77) or BL5 in (55,77)
+                                                                then    this_type=7 ;
+
+        else if BL1 in (80,81) or BL2 in (80,81) or BL3 in (80,81)
+                        or BL4 in (80,81) or BL5 in (80,81)
+                                                                then    this_type=8 ;
+
+        else                                                            this_type=9 ;
+
+
+        /* ---------- Last Month Legal Type ---------- */
+
+        if      c&l_month.027=1
+        or      c&l_month.028=1
+        or      c&l_month.029=1
+        or      c&l_month.030=1
+        or      c&l_month.031=1                                 then    pre_type=1 ;
+
+        else if c&l_month.188=238
+        or      c&l_month.189=238
+        or      c&l_month.190=238
+        or      c&l_month.191=238
+        or      c&l_month.192=238                               then    pre_type=1.5 ;
+
+        else if c&l_month.027=2 or c&l_month.028=2 or c&l_month.029=2 or c&l_month.030=2
+                        or c&l_month.031=2
+                                                                then    pre_type=2;
+
+        else if c&l_month.027 in (42,75) or c&l_month.028 in (42,75) or c&l_month.029 in (42,75)
+                        or c&l_month.030 in (42,75) or c&l_month.031 in (42,75)
+                                                                then    pre_type=3;
+
+        else if c&l_month.027 in (19,20,79) or c&l_month.028 in (19,20,79) or c&l_month.029 in (19,20,79)
+                        or c&l_month.030 in (19,20,79) or c&l_month.031 in (19,20,79)
+                                                                then    pre_type=4;
+
+        else if c&l_month.027 in (70,74) or c&l_month.028 in (70,74) or c&l_month.029 in (70,74)
+                        or c&l_month.030 in (70,74) or c&l_month.031 in (70,74)
+                                                                then    pre_type=5;
+
+        else if c&l_month.027 in (5,41,56) or c&l_month.028 in (5,41,56) or c&l_month.029 in (5,41,56)
+                        or c&l_month.030 in (5,41,56) or c&l_month.031 in (5,41,56)
+                                                                then    pre_type=6;
+
+        else if c&l_month.027 in (55,77) or c&l_month.028 in (55,77) or c&l_month.029 in (55,77)
+                        or c&l_month.030 in (55,77) or c&l_month.031 in (55,77)
+                                                                then    pre_type=7;
+
+        else if c&l_month.027 in (80,81) or c&l_month.028 in (80,81) or c&l_month.029 in (80,81)
+                        or c&l_month.030 in (80,81) or c&l_month.031 in (80,81)
+                                                                then    pre_type=8;
+
+        else                                                            pre_type=9;
+
+
+
+        length occurrence $20. ;
+
+        /* New */
+        if      pre_type = 9
+                and
+                1 <= this_type <=8                              then    Occurrence = 'Pure';
+
+        /* Shift In */
+        else if pre_type ne 9
+                and
+                pre_type ne this_type                           then    Occurrence = 'Shift';
+
+        if b and Occurrence in( 'Pure' , 'Shift') ;
+run ;
+
+
+/****** Legal invervention DS *****/
+
+data    Legal_Intervention&yymmdd       ;
+
+        merge
+                LI_occurrence           (in = a)
+                risklib.w_card_list     (in = w keep=serialno)
+                dlegal.sony_list                (in = s keep=serialno)
+                rpa.debtsales_list      (in = d keep=serialno)
+                rpa.affiliate_list      (in = f keep=serialno)
+                rpa.mortgage_list       (in = m keep=serialno)
+
+                %if %sysfunc( exist(sunshine.segm&l_month )) %then %do  ;
+                sunshine.segm&l_month   (in = g keep=serialno se004)
+                %end    ;
+
+                %else %do ;
+                sunshine.segm&l_2month  (in = g keep=serialno se004)
+                %end    ;
+
+                sunshine.irrl_balance&l_2month  (in = h keep=serialno irrl_balance)
+
+                ;
+
+        by      serialno        ;
+
+
+        /********************/
+        /*** Legal Type ***/
+        /********************/
+        length  Legal_Type $20 ;
+        if      this_type=1                                     then    Legal_Type='1_BKO'              ;
+        else if this_type=1.5                                   then    Legal_Type='1_Pre-BKO'          ;
+        else if this_type=2                                     then    Legal_Type='2_Death'            ;
+        else if this_type=3                                     then    Legal_Type='3_CRL'              ;
+        else if this_type=4                                     then    Legal_Type='4_Lawyer'           ;
+        else if this_type=5                                     then    Legal_Type='5_D-Shiho'          ;
+        else if this_type=6                                     then    Legal_Type='6_Mediation'        ;
+        else if this_type=7                                     then    Legal_Type='7_Shiho'            ;
+        else if this_type=8                                     then    Legal_Type='8_Right-Party'      ;
+        else                                                            Legal_Type='9_Other'            ;
+
+        /*** Adj ***/
+        if      c&l_month.032=.         then    Last_Wakai=0                    ;
+        else                                    Last_Wakai=c&l_month.032        ;
+
+        if      c&l_month.047=.         then    Last_Balance=0                  ;
+        else                                    Last_Balance=c&l_month.047      ;
+
+        if      c&l_month.051=.         then    Last_Delq=-99999                ;
+        else                                    Last_Delq=c&l_month.051         ;
+
+        if      c&l_month.198="1"       then    Last_WO_flag="1"                ;
+        else                                    Last_WO_flag="0"                ;
+
+        if      Balance =.              then    Balance=0                       ;
+        else                                    Balance=Balance                 ;
+
+        /*** Bal Flag ***/
+        length  This_Bal_Flag $20.
+                Last_Bal_Flag $20. ;
+
+        if      Balance<=0                      then    This_Bal_Flag='Bal=0' ;
+        else                                            This_Bal_Flag='Bal>0' ;
+
+        if      Last_Balance<=0                 then    Last_Bal_Flag='Bal=0' ;
+        else                                            Last_Bal_Flag='Bal>0' ;
+
+        /******** Book ********/
+        length  Book $20 ;
+
+        /*
+        if      Last_WO_flag="0" and    Balance>0       then    Book='OB' ;
+        else if Last_WO_flag="1" and    Balance>0       then    Book='WO' ;
+        else                                                    Book='PO' ;
+        */
+ 
+        /* 10/26 change  */ 
+        /*
+        if      (c&l_month.006=6 or Last_WO_flag="1") and ac28>0 and ac28 ne .  then    book='WO'       ;
+        else if Last_WO_flag="0" and ac28>0 and ac28 ne .                       then    book='OB'       ;
+        else if c042 not in('31dec9999'd,.)                                     then    book='PO'       ;
+        else                                                                            book='NA'       ;
+        */
+
+        /* 10/26 change */
+        if      (c&l_month.006=6 or Last_WO_flag="1") and  Last_Balance>0 and Last_Balance ne .  then    book='WO'       ;
+        else if Last_WO_flag="0" and  Last_Balance > 0 and Last_Balance ne .                     then    book='OB'       ;
+        else if c&l_month.042 not in('31dec9999'd,.)                                             then    book='PO'       ;
+        else                                                                                      book='NA'       ;
+
+        
+
+        /***** Portfolio *****/
+        length  Portfolio $20 ;
+
+        if      m then portfolio='MG'   ;
+        else if d then portfolio='DS'           ;
+        else if s then portfolio='SN'           ;
+        else if f then portfolio='AF'   ;
+        else if c014 in (8620,8621,8622,8623) or cu54 in ('3','4','5') then portfolio='XS'      ;
+        else if w then portfolio='WC'   ;
+        else if c&l_month.230 = 80 and c&l_month.231 = 1 then portfolio='BK' ;
+        else if c&l_month.230 = 80 and c&l_month.231 = 2 then portfolio='SF' ;
+        else portfolio='PL'                     ;
+
+        if      portfolio='AF' then se004 = 'A-1'       ;
+        else if portfolio in ('PL','WC','XS') and se004="" then se004='New_W'   ;
+
+        /*** Target ***/
+        if      Portfolio in('PL','WC','AF','XS','BK','SF') ;
+
+
+        /***** Adj *****/
+        length  LI_Type_adj     $20.
+                Wakai_adj       $10. ;
+
+
+        if      Legal_Type='1_BKO'              then    LI_Type_adj='1_BKO' ;
+        else if Legal_Type='1_Pre-BKO'          then    LI_Type_adj='1_BKO' ;
+        else if Legal_Type='2_Death'            then    LI_Type_adj='Death' ;
+        else if Legal_Type='3_CRL'              then    LI_Type_adj='2_CRL' ;
+        else if Legal_Type='4_Lawyer'           then    LI_Type_adj='3_Lawyer';
+        else if Legal_Type='5_D-Shiho'          then    LI_Type_adj='4_Shiho' ;
+        else if Legal_Type='6_Mediation'        then    LI_Type_adj='5_Mediation' ;
+        else if Legal_Type='7_Shiho'            then    LI_Type_adj='4_Shiho' ;
+        else if Legal_Type='8_Right-Party'      then    LI_Type_adj='6_Right-Party' ;
+        else                                            LI_Type_adj='NA' ;
+
+        if      Last_Wakai=0                    then    Wakai_adj='Normal';
+        else if Last_Wakai=1                    then    Wakai_adj='Wakai' ;
+        else                                            Wakai_adj='NA' ;
+
+
+        /***** GZ exposuer *****/
+        if irrl_balance= . then irrl_balance=0  ;
+        exposure = balance-IRRL_balance ;
+
+        /***** Set_Date *****/
+        cut_date=today()        ;
+        YYMM=&yymm      ;
+
+        if      a = 1 ;
+
+run ;
+
+proc sort data = Legal_Intervention&yymmdd      ;
+by cut_date ;
+run ;
+
+data dlegal.Legal_Intervention&yymmdd   ;
+        merge
+                Legal_Intervention&yymmdd(in=a)
+                dlegal.biz_day  (in=b
+                                keep=cut_date biz_day Biz_date)
+        ;
+        by cut_date     ;
+        if a    ;
+run     ;
+
+
+proc sort data = dlegal.Legal_Intervention&yymmdd       ;
+by serialno Biz_date ;
+run ;
+
+
+/*------------------------------*/
+/*   6. Export Daily LI Info    */
+/*------------------------------*/
+
+proc sql ;
+create table sum_intervention&yymmdd as
+select
+        YYMM,
+        Biz_date,
+        Biz_day,
+        Portfolio,
+        Last_WO_flag                    as BOP_WO_Flag,
+        WO_flag                         as EOP_WO_Flag,
+        Last_Wakai                      as BOP_Wakai,
+        this_type,
+        Occurrence,
+        Book,
+        se004                                           ,
+        count(serialno)                 as count,
+        sum(Last_Balance/1000000)       as BOP_Balance_MM,
+        sum(Balance/1000000)            as EOP_Balance_MM,
+        sum(IRRL_Balance/1000000)       as IRRL_balance_MM,
+        sum(exposure/1000000)           as Exposure_MM
+from
+         dlegal.Legal_Intervention&yymmdd
+group by
+        YYMM,
+        Biz_date,
+        Biz_day,
+        Portfolio,
+        Last_WO_flag ,
+        WO_flag,
+        Last_Wakai,
+        this_type,
+        Occurrence,
+        Book,
+        se004
+        ;
+quit ;
+
+proc export data = sum_intervention&yymmdd
+OUTFILE= "/share/sfrisk/legal/8_other/legal_interventionYYMMDD/sum_intervention_&yymmdd..csv"
+dbms = csv replace ;
+run ;
+
+/* 20120612追加_地域別フラグありレポート（NISモニタリング） */
+
+data	reLegal_Intervention&yymmdd ;
+set	dlegal.Legal_Intervention&yymmdd ;
+
+/***** 都道府県 *****/
+
+code = int(c&l_month.009 /100);
+length pref $10. ;
+
+if 	code=1	 	 then pref = "北海道" ;
+else if	code=2	 	 then pref = "青森県" ;
+else if code=3 	  	 then pref = "岩手県" ;
+else if code=4 		 then pref = "宮城県" ;
+else if code=10		 then pref = "秋田県" ;
+else if code=11		 then pref = "山形県" ;
+else if code=12		 then pref = "福島県" ;
+else if code=20		 then pref = "茨城県" ;
+else if code=21		 then pref = "栃木県" ;
+else if code=22		 then pref = "群馬県" ;
+else if code=23		 then pref = "埼玉県" ;
+else if code=24		 then pref = "千葉県" ; 
+else if code=25		 then pref = "東京都" ;
+else if code=26		 then pref = "神奈川県" ;
+else if code=30		 then pref = "新潟県" ;
+else if code=31		 then pref = "富山県" ;
+else if code=32		 then pref = "石川県" ;
+else if code=33		 then pref = "福井県" ;
+else if code=34		 then pref = "山梨県" ; 
+else if code=40		 then pref = "長野県" ;
+else if code=41		 then pref = "岐阜県" ;
+else if code=42		 then pref = "静岡県" ;
+else if code=43		 then pref = "愛知県" ;
+else if code=44		 then pref = "三重県" ;
+else if code=50		 then pref = "滋賀県" ;
+else if code=57		 then pref = "京都府" ;
+else if code=58		 then pref = "大阪府" ;
+else if code=59		 then pref = "兵庫県" ;
+else if code=60		 then pref = "奈良県" ;
+else if code=61		 then pref = "和歌山県" ;
+else if code=62		 then pref = "鳥取県" ;
+else if code=63		 then pref = "島根県" ;
+else if code=64		 then pref = "岡山県" ;
+else if code=70		 then pref = "広島県" ;
+else if code=71		 then pref = "山口県" ;
+else if code=72		 then pref = "徳島県" ; 
+else if code=73		 then pref = "香川県" ;
+else if code=74		 then pref = "愛媛県" ;
+else if code=80		 then pref = "高知県" ;
+else if code=81		 then pref = "福岡県" ;
+else if code=82		 then pref = "佐賀県" ;
+else if code=83		 then pref = "長崎県" ;
+else if code=84		 then pref = "熊本県" ;
+else if code=90		 then pref = "大分県" ;
+else if code=91		 then pref = "宮崎県" ;
+else if code=92		 then pref = "鹿児島県" ;
+else if code=93		 then pref = "沖縄県" ;
+else 		     pref= "other" ;
+
+run ;
+
+
+proc sort data = reLegal_Intervention&yymmdd       ;
+by serialno Biz_date ;
+run ;
+
+proc sql ;
+create table resum_intervention&yymmdd as
+select
+        YYMM,
+        Biz_date,
+        Biz_day,
+        Portfolio,
+        Last_WO_flag                    as BOP_WO_Flag,
+        WO_flag                         as EOP_WO_Flag,
+        Last_Wakai                      as BOP_Wakai,
+        this_type,
+        Occurrence,
+        Book,
+        se004                                           ,
+	pref ,
+        count(serialno)                 as count,
+        sum(Last_Balance/1000000)       as BOP_Balance_MM,
+        sum(Balance/1000000)            as EOP_Balance_MM,
+        sum(IRRL_Balance/1000000)       as IRRL_balance_MM,
+        sum(exposure/1000000)           as Exposure_MM
+from
+         reLegal_Intervention&yymmdd
+group by
+        YYMM,
+        Biz_date,
+        Biz_day,
+        Portfolio,
+        Last_WO_flag ,
+        WO_flag,
+        Last_Wakai,
+        this_type,
+        Occurrence,
+        Book,
+        se004 ,
+	pref
+        ;
+quit ;
+
+/*5月の民事再生企業の影響*/
+
+proc export data = resum_intervention&yymmdd
+OUTFILE= "/share/sfrisk/legal/8_other/legal_interventionYYMMDD/addsum_intervention_&yymmdd..csv"
+dbms = csv replace ;
+run ;
+
+/******************   BKO   ********************/
+
+proc sql ;
+create table sum_BKO&yymmdd as
+select
+        YYMM,
+        Biz_date,
+        Biz_day,
+        Portfolio,
+        Last_WO_flag                    as BOP_WO_Flag,
+        WO_flag                         as EOP_WO_Flag,
+        Last_Wakai                      as BOP_Wakai,
+        pre_type,
+        this_type,
+        Occurrence,
+        Book,
+        se004                                           ,
+        count(serialno)                 as count,
+        sum(Last_Balance/1000000)       as BOP_Balance_MM,
+        sum(Balance/1000000)            as EOP_Balance_MM,
+        sum(IRRL_Balance/1000000)       as IRRL_balance_MM,
+        sum(exposure/1000000)           as Exposure_MM
+from
+         dlegal.Legal_Intervention&yymmdd
+where
+         this_type in (1,1.5)
+group by
+        YYMM,
+        Biz_date,
+        Biz_day,
+        Portfolio,
+        Last_WO_flag ,
+        WO_flag,
+        Last_Wakai,
+        pre_type,
+        this_type,
+        Occurrence,
+        Book,
+        se004
+        ;
+quit ;
+
+proc export data = sum_BKO&yymmdd
+OUTFILE= "/share/sfrisk/legal/8_other/legal_interventionYYMMDD/sum_BKO_&yymmdd..csv"
+dbms = csv replace ;
+run ;
+
+
+
+/******************   LE   ********************/
+
+proc sql ;
+        create table sum_le&yymmdd as
+        select
+                YYMM,
+                Biz_date,
+                Biz_day,
+                Portfolio,
+                Last_WO_flag                    as BOP_WO_Flag,
+                WO_flag                         as EOP_WO_Flag,
+                Last_Wakai                      as BOP_Wakai,
+                this_type,
+                Occurrence,
+                Book,
+                c&l_month.040 as LE,
+                se004                                           ,
+                count(serialno)                 as count        ,
+                sum(Last_Balance/1000000)       as BOP_Balance_MM,
+                sum(Balance/1000000)            as EOP_Balance_MM,
+                sum(c&l_month.041/1000000)              as LE_balance_MM,
+                sum(IRRL_Balance/1000000)       as IRRL_balance_MM,
+                sum(exposure/1000000)           as Exposure_MM
+        from
+                 dlegal.Legal_Intervention&yymmdd
+        group by
+                YYMM,
+                Biz_date,
+                Biz_day,
+                Portfolio,
+                Last_WO_flag ,
+                WO_flag,
+                Last_Wakai,
+                this_type,
+                Occurrence,
+                Book,
+                LE,
+                se004
+                ;
+quit ;
+proc export data = sum_LE&yymmdd
+OUTFILE= "/share/sfrisk/legal/8_other/legal_interventionYYMMDD/sum_LE_&yymmdd..csv"
+dbms = csv replace ;
+run ;
+
+%end;
+%mend;
+%daily_li;
+
+
+X "chmod 640  /share/sfrisk/legal/8_other/legal_interventionYYMMDD/legal_intervention&yymmdd..sas7bdat" ;
+X "chmod 640  /share/sfrisk/legal/8_other/legal_interventionYYMMDD/sum_intervention_&yymmdd..csv" ;
+X "chmod 640  /share/sfrisk/legal/8_other/legal_interventionYYMMDD/sum_BKO_&yymmdd..csv" ;
+X "chmod 640  /share/sfrisk/legal/8_other/legal_interventionYYMMDD/sum_LE_&yymmdd..csv" ;
+X "chmod 640  /share/sfrisk/legal/8_other/legal_interventionYYMMDD/addsum_intervention_&yymmdd..csv" ;
