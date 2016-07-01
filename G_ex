@@ -1,0 +1,82 @@
+/*Import Data*/
+libname home "~/";
+
+/*SF*/
+data WORK.SF_JIMUSHO;
+infile '~/SF_Jimusho.csv' delimiter = ',' MISSOVER DSD lrecl=32767 firstobs=2;
+informat SF_Jimusho $60. Jimusho $60. 
+	SF_NL_Num best32. SF_NL_IRRL best32. SF_NL_Henkan best32. SF_NL_Disc best32.
+	SF_L_Num best32. SF_L_IRRL best32. SF_L_Henkan best32. SF_L_Disc best32.
+	SF_TTL_Num best32. SF_TTL_IRRL best32. SF_TTL_Henkan best32. SF_TTL_Disc best32.;
+input SF_Jimusho $ Jimusho $
+	SF_NL_Num SF_NL_IRRL SF_NL_Henkan SF_NL_Disc
+	SF_L_Num SF_L_IRRL SF_L_Henkan SF_L_Disc
+	SF_TTL_Num SF_TTL_IRRL SF_TTL_Henkan SF_TTL_Disc;
+if Jimusho="#N/A" then delete;
+*if Jimusho="SF_TOTAL" then Jimusho="TOTAL";
+run;
+
+/*SK*/
+data WORK.SK_JIMUSHO;
+infile '~/SK_Jimusho.csv' delimiter = ',' MISSOVER DSD lrecl=32767 firstobs=2;
+informat SK_Jimusho $60. Jimusho $60. 
+	SK_NL_Num best32. SK_NL_IRRL best32. SK_NL_Henkan best32. SK_NL_Disc best32.
+	SK_L_Num best32. SK_L_IRRL best32. SK_L_Henkan best32. SK_L_Disc best32.
+	SK_TTL_Num best32. SK_TTL_IRRL best32. SK_TTL_Henkan best32. SK_TTL_Disc best32.;
+input SK_Jimusho $ Jimusho $
+	SK_NL_Num SK_NL_IRRL SK_NL_Henkan SK_NL_Disc
+	SK_L_Num SK_L_IRRL SK_L_Henkan SK_L_Disc
+	SK_TTL_Num SK_TTL_IRRL SK_TTL_Henkan SK_TTL_Disc;
+if Jimusho="#N/A" then delete;
+*if Jimusho="SK_TOTAL" then Jimusho="TOTAL";
+run;
+
+/*AP*/
+data WORK.AP_JIMUSHO;
+infile '~/AP_Jimusho.csv' delimiter = ',' MISSOVER DSD lrecl=32767 firstobs=2;
+informat AP_Jimusho $60. Jimusho $60. 
+	AP_NL_Num best32. AP_NL_IRRL best32. AP_NL_Henkan best32. AP_NL_Disc best32.
+	AP_L_Num best32. AP_L_IRRL best32. AP_L_Henkan best32. AP_L_Disc best32.
+	AP_TTL_Num best32. AP_TTL_IRRL best32. AP_TTL_Henkan best32. AP_TTL_Disc best32.;
+input AP_Jimusho $ Jimusho $
+	AP_NL_Num AP_NL_IRRL AP_NL_Henkan AP_NL_Disc
+	AP_L_Num AP_L_IRRL AP_L_Henkan AP_L_Disc
+	AP_TTL_Num AP_TTL_IRRL AP_TTL_Henkan AP_TTL_Disc;
+if Jimusho="#N/A" then delete;
+*if Jimusho="AP_TOTAL" then Jimusho="TOTAL";
+run;
+
+proc sort data=SF_Jimusho;by Jimusho;run;
+proc sort data=SK_Jimusho;by Jimusho;run;
+proc sort data=AP_Jimusho;by Jimusho;run;
+
+data Grp_Jimusho;
+merge SF_Jimusho(in=sf) SK_Jimusho(in=sk) AP_Jimusho(in=ap);
+by Jimusho;
+if sf and ap and sk;
+Total_Wakai=SF_TTL_Num+SK_TTL_Num+AP_TTL_Num;
+run;
+
+proc sort data=Grp_Jimusho;by descending Total_Wakai;run;
+
+/******/
+
+data _null_;
+set Grp_Jimusho;
+file '~/Grp_Jimusho.csv' dlm=',' dsd lrecl=32767;
+put
+SF_Jimusho Jimusho SF_NL_Num SF_NL_IRRL SF_NL_Henkan SF_NL_Disc SF_L_Num SF_L_IRRL SF_L_Henkan SF_L_Disc SF_TTL_Num SF_TTL_IRRL SF_TTL_Henkan SF_TTL_Disc
+SK_Jimusho SK_NL_Num SK_NL_IRRL SK_NL_Henkan SK_NL_Disc SK_L_Num SK_L_IRRL SK_L_Henkan SK_L_Disc SK_TTL_Num SK_TTL_IRRL SK_TTL_Henkan SK_TTL_Disc
+AP_Jimusho AP_NL_Num AP_NL_IRRL AP_NL_Henkan AP_NL_Disc AP_L_Num AP_L_IRRL AP_L_Henkan AP_L_Disc AP_TTL_Num AP_TTL_IRRL AP_TTL_Henkan AP_TTL_Disc;
+run;
+
+
+
+
+
+
+/******/
+proc export data=Grp_Jimusho
+outfile="~/Grp_Jimusho.csv"
+dbms=csv replace;run;
+
