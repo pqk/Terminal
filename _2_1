@@ -1,3 +1,5 @@
+_2_1
+
 Option Explicit
 
 Dim rdate, pw, filedir, file
@@ -181,5 +183,82 @@ End Sub
 Public Function IsInArray(stringToBeFound As String, arr As Variant) As Boolean
     IsInArray = (UBound(Filter(arr, stringToBeFound)) > -1) 'zero-based array: -1, one-based: 0
 End Function
+
+_2_2
+
+Option Explicit
+
+Sub Create_Kabarai_CSV()
+Dim filedir
+Dim dDate As String
+Dim month As Long, mo_header As String
+Dim No As Long, no_header As String
+Dim Serialno As Long, serialno_header As String
+Dim Wakaibi As Long, wakaibi_header As String
+Dim Maxirrl As Long, max_header As String
+Dim Seikyu As Long, seikyu_header As String
+Dim Kosyo As Long, kosyo_header As String
+Dim Kekka As Long, kekka_header As String
+Dim Status As String
+Dim sFName As String 'Path and name of text file
+Dim iFNumber As Integer 'File number
+Dim lRow As Long 'Row number in worksheet
+
+filedir = Application.InputBox(prompt:="?3?f?[?^?I?i”[?a?I?t?@?C???I?p?X?d‘S?A“u?I?μ?A‰o?3?￠?B")
+
+sFName = filedir & "\" & "ALL_Kabarai.csv"
+iFNumber = FreeFile     'Get an unused file number
+
+Open sFName For Output As #iFNumber     'Create new file or overwrite existing file
+
+Worksheets("SUMMARY").Activate
+
+'Write header row
+
+lRow = 1
+    With Worksheets("SUMMARY")     'Read data from worksheet
+        dDate = .cells(lRow, 2)
+        mo_header = .cells(lRow, 1)
+        no_header = .cells(lRow, 4)
+        serialno_header = .cells(lRow, 5)
+        wakaibi_header = .cells(lRow, 6)
+        max_header = .cells(lRow, 7)
+        seikyu_header = .cells(lRow, 8)
+        kosyo_header = .cells(lRow, 9)
+        kekka_header = .cells(lRow, 10)
+        Status = .cells(lRow, 3)
+    End With
+    Write #iFNumber, dDate, mo_header, no_header, serialno_header, wakaibi_header, max_header, seikyu_header, _
+                                    kosyo_header, kekka_header, Status
+
+'Write data
+lRow = 2
+
+Do
+    With Worksheets("SUMMARY")     'Read data from worksheet
+        dDate = Format(.cells(lRow, 2), "yyyy/mm/dd")
+        month = .cells(lRow, 1)
+        No = .cells(lRow, 4)
+        Serialno = .cells(lRow, 5)
+        Wakaibi = .cells(lRow, 6)
+        Maxirrl = .cells(lRow, 7)
+        Seikyu = .cells(lRow, 8)
+        Kosyo = .cells(lRow, 9)
+        Kekka = .cells(lRow, 10)
+        Status = .cells(lRow, 3)
+    End With
+
+    Write #iFNumber, dDate, month, No, Serialno, Wakaibi, Maxirrl, Seikyu, Kosyo, Kekka, Status
+    lRow = lRow + 1 'Address next row of worksheet
+Loop Until IsEmpty(Worksheets("SUMMARY").cells(lRow, 1))   'Loop until an empty cell is found
+
+Close #iFNumber 'Close the file
+
+MsgBox "CSV?t?@?C???I?i?￢?I?R?1?μ?U?μ???B"
+
+End Sub
+
+
+
 
 
