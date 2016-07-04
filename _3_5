@@ -1,0 +1,583 @@
+Option Explicit
+Option Base 1
+
+Sub SK_PT()
+Dim wks As Worksheet, data_source As Worksheet
+Dim FinalRow As Long, finalcol As Long
+Dim PTCache As PivotCache
+Dim PRange As Range
+Dim table_Name As String
+Dim PT As PivotTable
+Dim results_rng As Range
+Dim Month As Integer
+Dim target_field As String, edited_name As String
+Dim PT_Array  As Variant 'zero values default to null when array is defined as variant
+Dim pvt_Itm As PivotItem
+Dim pvt_Tbl As PivotTable
+Dim test, i, j
+Dim col_array() As Integer
+Dim col_count As Integer
+Dim col_start As Integer
+
+Application.ScreenUpdating = False
+
+Set wks = Worksheets("Analysis1") 'CHANGE
+Set data_source = Workbooks("Shinki_GZ_data.xlsm").Sheets("Summary") 'CHANGE
+FinalRow = data_source.Cells(Rows.Count, 1).End(xlUp).Row
+finalcol = data_source.Cells(1, Columns.Count).End(xlToLeft).Column
+Set PRange = data_source.Cells(1, 1).Resize(FinalRow, finalcol)
+Set PTCache = ActiveWorkbook.PivotCaches.Add(SourceType:=xlDatabase, SourceData:=PRange)
+
+For Each PT In wks.PivotTables
+    PT.TableRange2.Clear
+Next PT
+
+table_Name = "SK_PT" 'CHANGE
+Set PT = PTCache.CreatePivotTable(TableDestination:=wks.Range("B4"), TableName:=table_Name)
+PT.AddFields PageFields:="type", RowFields:="MO", ColumnFields:="Yr"
+PT.PivotFields("YR").ShowAllItems = True
+
+Set results_rng = wks.Columns("k:k").EntireColumn
+Month = wks.Rows("1:1").Find(what:="Month").Offset(0, 1).Value
+
+'<<<<<<<<<<<<<<<<<<  ?J?|???????”  >>>>>>>>>>>>>>>>>>
+target_field = "1.2 ?J?|???????”"
+edited_name = "?J?|???????”"
+
+With PT.PivotFields(target_field)
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = " ?J?|???????”"
+    .NumberFormat = "#,##"
+End With
+
+With PT
+    .TableStyle2 = "PivotStylelight16"
+    .ColumnGrand = False
+    .RowGrand = False
+    .DisplayErrorString = True
+End With
+
+PT.PivotFields("type").CurrentPage = "ALL"
+
+'<<<<< Determine number of values in column field "YR" >>>
+Set pvt_Tbl = wks.PivotTables(table_Name)
+
+For Each pvt_Itm In pvt_Tbl.PivotFields("YR").PivotItems
+    test = test + 1
+    ReDim Preserve col_array(1 To test)
+        For i = test To test
+            col_array(i) = pvt_Itm
+        Next i
+Next
+
+col_count = UBound(col_array, 1)
+col_start = col_array(LBound(col_array, 1))
+
+'MsgBox "col_count : " & col_count & vbNewLine & "col_start : " & col_start
+'<<<<<<<<<<<<<<<<<<<<>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 6)
+results_rng.Find(what:=edited_name).Offset(1, 2).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+
+'<<<<<<<<<<<<<<<<<<  per biz day  >>>>>>>>>>>>>>>>>>
+results_rng.Find(what:=edited_name).Offset(Month, col_count + 27).Copy
+results_rng.Find(what:=edited_name).Offset(Month, col_count + 28).PasteSpecial Paste:=xlPasteFormulas
+
+
+'<<<<<<<<<<<<<<<<<< ?a‰d???”  >>>>>>>>>>>>>>>>>>
+wks.Range("A1").Activate
+PT.PivotFields(" " & edited_name).Orientation = xlHidden
+
+target_field = "?a‰d???”(a)"
+edited_name = "?a‰d???”"
+
+With PT.PivotFields(target_field)
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+'‘i?×
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 4)
+results_rng.Find(what:=edited_name).Offset(1, 29).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+
+'”C?O
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+results_rng.Find(what:=edited_name).Offset(1, 56).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+'Populate current month cell in total table
+results_rng.Find(what:=edited_name).Offset(Month, col_count).Copy
+results_rng.Find(what:=edited_name).Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+
+
+'<<<<<<<<<<<<<<<<<<  ?J?|/?a‰dRatio  >>>>>>>>>>>>>>>>>>
+results_rng.Find(what:="?J?|/?a‰dRatio").Offset(Month, col_count).Copy
+results_rng.Find(what:="?J?|/?a‰dRatio").Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<<<<<<<<<<<<<<  ?a‰d???”?“  >>>>>>>>>>>>>>>>>>
+results_rng.Find(what:="?a‰d???”?“").Offset(Month, col_count + 27).Copy
+results_rng.Find(what:="?a‰d???”?“").Offset(Month, col_count + 28).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="?a‰d???”?“").Offset(Month, col_count + 54).Copy
+results_rng.Find(what:="?a‰d???”?“").Offset(Month, col_count + 55).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<<<<<<<<<<<<<<  ?????a?z(b)  >>>>>>>>>>>>>>>>>>
+wks.Range("A1").Activate
+PT.PivotFields(edited_name).Orientation = xlHidden
+
+target_field = "?????a?z(b)"
+edited_name = "?????a?z"
+
+With PT
+    .CalculatedFields.Add "temp", "='?????a?z(b)' /1000000", True
+    .PivotFields("temp").Orientation = xlDataField
+End With
+
+With PT.PivotFields("?‡?v / " & "temp")
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+'‘i?×
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 4)
+results_rng.Find(what:=edited_name).Offset(1, 29).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+'”C?O
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+results_rng.Find(what:=edited_name).Offset(1, 56).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+'Populate current month cell in total table
+results_rng.Find(what:=edited_name).Offset(Month, col_count).Copy
+results_rng.Find(what:=edited_name).Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+
+
+'<<<<<<<<<<<<<<<<<<  ?o’??c(c)   >>>>>>>>>>>>>>>>>>
+wks.Range("A1").Activate
+
+Dim pvt As PivotTable, pf As PivotField
+Dim strSource As String, strformula As String
+
+Set pvt = wks.PivotTables(table_Name)
+For Each pf In PT.CalculatedFields
+    strSource = pf.SourceName
+    strformula = pf.Formula
+    pf.Delete
+Next pf
+
+target_field = "?o’??c(c)"
+edited_name = "?o’??c"
+
+With PT
+    .CalculatedFields.Add "temp", "='?o’??c(c)' /1000000", True
+    .PivotFields("temp").Orientation = xlDataField
+End With
+
+With PT.PivotFields("?‡?v / " & "temp")
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+'‘i?×
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 3)
+results_rng.Find(what:=edited_name).Offset(1, 29).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+'”C?O
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+results_rng.Find(what:=edited_name).Offset(1, 56).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+'Populate current month cell in total table
+results_rng.Find(what:=edited_name).Offset(Month, col_count).Copy
+results_rng.Find(what:=edited_name).Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+
+
+'<<<<<<<<<<<<<<<<<<  IRRL’P‰?_MM   >>>>>>>>>>>>>>>>>>
+results_rng.Find(what:="IRRL’P‰?_MM").Offset(Month, col_count).Copy 'need to automate column number
+results_rng.Find(what:="IRRL’P‰?_MM").Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="IRRL’P‰?_MM").Offset(Month, 33).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="IRRL’P‰?_MM").Offset(Month, 60).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<<<<<<<<<<<<<<  ?O?O?a?z(d)   >>>>>>>>>>>>>>>>>>
+wks.Range("A1").Activate
+
+Set pvt = wks.PivotTables(table_Name)
+For Each pf In PT.CalculatedFields
+    strSource = pf.SourceName
+    strformula = pf.Formula
+    pf.Delete
+Next pf
+
+target_field = "?O?O?a?z(d)"
+edited_name = "?O?O?a?z"
+
+With PT
+    .CalculatedFields.Add "temp", "='?O?O?a?z(d)' /1000000", True
+    .PivotFields("temp").Orientation = xlDataField
+End With
+
+With PT.PivotFields("?‡?v / " & "temp")
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+'‘i?×
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 4)
+results_rng.Find(what:=edited_name).Offset(1, 29).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+
+'”C?O
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 6)
+results_rng.Find(what:=edited_name).Offset(1, 56).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+'Populate current month cell in total table
+results_rng.Find(what:=edited_name).Offset(Month, col_count).Copy
+results_rng.Find(what:=edited_name).Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+
+
+'<<<<<<<<<<<<<<<<<<  ?u?u?c???a?z(e)   >>>>>>>>>>>>>>>>>>
+wks.Range("A1").Activate
+
+Set pvt = wks.PivotTables(table_Name)
+For Each pf In PT.CalculatedFields
+    strSource = pf.SourceName
+    strformula = pf.Formula
+    pf.Delete
+Next pf
+
+target_field = "?u?u?c???a?z(e)"
+edited_name = "?u?u?c???a?z"
+
+With PT
+    .CalculatedFields.Add "temp", "='?u?u?c???a?z(e)' /1000000", True
+    .PivotFields("temp").Orientation = xlDataField
+End With
+
+With PT.PivotFields("?‡?v / " & "temp")
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+'‘i?×
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 6)
+results_rng.Find(what:=edited_name).Offset(1, 29).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+
+'”C?O
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 6)
+results_rng.Find(what:=edited_name).Offset(1, 56).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+'Populate current month cell in total table
+results_rng.Find(what:=edited_name).Offset(Month, col_count).Copy
+results_rng.Find(what:=edited_name).Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<<<<<<<<<<<<<<  GZ???X >>>>>>>>>>>>>>>>>>
+results_rng.Find(what:="GZ???X").Offset(Month, col_count).Copy
+results_rng.Find(what:="GZ???X").Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="GZ???X").Offset(Month, 33).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="GZ???X").Offset(Month, 60).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<<<<<<<<<<<<<<  GZ???X’P‰?  >>>>>>>>>>>>>>>>>>
+results_rng.Find(what:="GZ???X’P‰?").Offset(Month, col_count).Copy
+results_rng.Find(what:="GZ???X’P‰?").Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="GZ???X’P‰?").Offset(Month, 33).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="GZ???X’P‰?").Offset(Month, 60).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<<<<<<<<<<<<<<  ‘i?×GZ???X?“ >>>>>>>>>>>>>>>>>>
+results_rng.Find(what:="GZ???X?“").Offset(Month, col_count + 27).Copy
+results_rng.Find(what:="GZ???X?“").Offset(Month, col_count + 28).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="GZ???X?“").Offset(Month, col_count + 54).Copy
+results_rng.Find(what:="GZ???X?“").Offset(Month, col_count + 55).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<<<<<<<<<<<<<<  ?O?O?|  >>>>>>>>>>>>>>>>>>
+results_rng.Find(what:="?O?O?|").Offset(Month, col_count).Copy
+results_rng.Find(what:="?O?O?|").Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="?O?O?|").Offset(Month, 33).PasteSpecial Paste:=xlPasteFormulas
+results_rng.Find(what:="?O?O?|").Offset(Month, 60).PasteSpecial Paste:=xlPasteFormulas
+
+
+'<<<<<<<<<<<<<<<<<<  ?Y?E  >>>>>>>>>>>>>>>>>>
+wks.Range("A1").Activate
+
+Set pvt = wks.PivotTables(table_Name)
+For Each pf In PT.CalculatedFields
+    strSource = pf.SourceName
+    strformula = pf.Formula
+    pf.Delete
+Next pf
+
+target_field = "?Y?E"
+edited_name = " ?Y?E"
+
+With PT.PivotFields(target_field)
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+'‘i?×
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 2)
+results_rng.Find(what:=edited_name).Offset(1, 29).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+'”C?O
+With PT
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+' Assign PT values to array
+PT_Array = wks.PivotTables(table_Name).DataBodyRange.Value
+
+For j = LBound(PT_Array, 1) To UBound(PT_Array, 1)
+    For i = LBound(PT_Array, 2) To UBound(PT_Array, 2)
+        If PT_Array(j, i) = 0 Then
+       PT_Array(j, i) = ""
+        End If
+    Next i
+Next j
+
+'Locate column in table section that matches first year of data from PT and then set equal to populated array from above
+edited_name = Right(edited_name, 6)
+results_rng.Find(what:=edited_name).Offset(1, 56).Resize(UBound(PT_Array, 1), UBound(PT_Array, 2)) = PT_Array
+
+'Populate current month cell in total table
+results_rng.Find(what:=edited_name).Offset(Month, col_count).Copy
+results_rng.Find(what:=edited_name).Offset(Month, col_count + 1).PasteSpecial Paste:=xlPasteFormulas
+'<<<<<<<<<<<<<<<<<<    >>>>>>>>>>>>>>>>>>
+
+With ActiveSheet.Cells
+    .RowHeight = 12.75
+    .Font.Name = "calibri"
+    .Cells.Font.Size = 10.5
+End With
+
+wks.Range("A1").Activate
+
+    MsgBox "?f?[?^?I?????d?R?1?μ?U?μ???B"
+    
+End Sub
+
