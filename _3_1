@@ -1,0 +1,418 @@
+Option Explicit
+
+Sub build_PTs()
+Dim wks As Worksheet, data_source As Worksheet
+Dim PTCache As PivotCache
+Dim pt As PivotTable
+Dim PRange As Range
+Dim FinalRow As Long, finalcol As Long
+Dim results_rng As Range
+Dim Month As Integer
+Dim cell As Range
+Dim target_field As String, edited_name As String
+
+Set wks = Worksheets("analysis1")
+Set data_source = Workbooks("Shinki_GZ_data.xlsm").Sheets("data_table")
+
+'Application.ScreenUpdating = False
+
+'STEP I ' Delete any prior pivot tables
+For Each pt In wks.PivotTables
+    pt.TableRange2.Clear
+Next pt
+
+' Define input area and set up a Pivot Cache
+FinalRow = data_source.Cells(Rows.Count, 1).End(xlUp).Row
+finalcol = data_source.Cells(1, Columns.Count).End(xlToLeft).Column
+Set PRange = data_source.Cells(1, 1).Resize(FinalRow, finalcol)
+Set PTCache = ActiveWorkbook.PivotCaches.Add(SourceType:=xlDatabase, SourceData:=PRange)
+
+'STEP II
+Set pt = PTCache.CreatePivotTable(TableDestination:=wks.Range("B2"), TableName:="SK_PT1")
+'STEP III
+pt.ManualUpdate = True 'turns of autocalc of PT after dropping in each new var
+'STEP IV
+' Set up the row & column fields
+pt.AddFields PageFields:="type", RowFields:="MO", ColumnFields:="Yr"
+
+'STEP V     ' Set up the data fields
+target_field = "1.2 ?J?|???????”"
+edited_name = "?J?|???????”"
+
+With pt.PivotFields(target_field)
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+pt.PivotFields("type").CurrentPage = "ALL"
+
+'STEP VII   ' Format the pivot table
+'PT.ShowTableStyleRowStripes = False
+With pt
+    .TableStyle2 = "PivotStylelight16"
+    .ColumnGrand = False
+    .RowGrand = False
+    '.DisplayNullString = False 'don't work?
+    '.NullString = ""
+End With
+
+'STEP VI
+pt.ManualUpdate = False
+pt.ManualUpdate = True
+
+'Copy & Paste PT data to static graph/charts
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+
+Set results_rng = wks.Columns("K:K").EntireColumn
+Month = wks.Rows("1:1").Find(what:="Month").Offset(0, 1).Value + 1
+
+results_rng.Find(what:=edited_name).Offset(1, 2).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+'<<<<<< ?a‰d???” >>>>>>
+wks.Range("A1").Activate
+pt.PivotFields(edited_name).Orientation = xlHidden
+
+'rename variables
+target_field = "?a‰d???”(a)"
+edited_name = "?a‰d???”"
+
+With pt.PivotFields(target_field)
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 30).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 59).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+results_rng.Find(what:=edited_name).Offset(Month - 2, 5).Copy 'need to automate column number
+results_rng.Find(what:=edited_name).Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+
+'<<<<<< ?????a?z>>>>>>
+wks.Range("A1").Activate
+pt.PivotFields(edited_name).Orientation = xlHidden
+
+'rename variables
+target_field = "?????a?z(b)"
+edited_name = "?????a?z"
+
+With pt
+    .CalculatedFields.Add "temp", "='?????a?z(b)' /1000000", True
+    .PivotFields("temp").Orientation = xlDataField
+End With
+
+With pt.PivotFields("?‡?v / " & "temp")
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+    
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 30).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 59).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+results_rng.Find(what:=edited_name).Offset(Month - 2, 5).Copy
+results_rng.Find(what:=edited_name).Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<< ?o’??c >>>>>>
+wks.Range("A1").Activate
+
+'sketchy work around to get VBA to delete a calculated field...jeez...
+Dim pvt As PivotTable, pf As PivotField
+Dim strSource As String, strformula As String
+
+Set pvt = wks.PivotTables("SK_PT1")
+For Each pf In pt.CalculatedFields
+    strSource = pf.SourceName
+    strformula = pf.Formula
+    pf.Delete
+Next pf
+
+'rename variables
+target_field = "?o’??c(c)"
+edited_name = "?o’??c"
+
+With pt
+    .CalculatedFields.Add "temp", "='?o’??c(c)' /1000000", True
+    .PivotFields("temp").Orientation = xlDataField
+End With
+
+With pt.PivotFields("?‡?v / " & "temp")
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 30).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 59).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+results_rng.Find(what:=edited_name).Offset(Month - 2, 5).Copy
+results_rng.Find(what:=edited_name).Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<< ?O?O?a?z >>>>>>
+wks.Range("A1").Activate
+
+Set pvt = wks.PivotTables("SK_PT1")
+For Each pf In pt.CalculatedFields
+    strSource = pf.SourceName
+    strformula = pf.Formula
+    pf.Delete
+Next pf
+
+'rename variables
+target_field = "?O?O?a?z(d)"
+edited_name = "?O?O?a?z"
+
+With pt
+    .CalculatedFields.Add "temp", "='?O?O?a?z(d)' /1000000", True
+    .PivotFields("temp").Orientation = xlDataField
+End With
+
+With pt.PivotFields("?‡?v / " & "temp")
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 30).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 59).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+results_rng.Find(what:=edited_name).Offset(Month - 2, 5).Copy
+results_rng.Find(what:=edited_name).Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<< ?u?u?c???a?z >>>>>>
+wks.Range("A1").Activate
+
+Set pvt = wks.PivotTables("SK_PT1")
+For Each pf In pt.CalculatedFields
+    strSource = pf.SourceName
+    strformula = pf.Formula
+    pf.Delete
+Next pf
+
+'rename variables
+target_field = "?u?u?c???a?z(e)"
+edited_name = "?u?u?c???a?z"
+
+With pt
+    .CalculatedFields.Add "temp", "='?u?u?c???a?z(e)' /1000000", True
+    .PivotFields("temp").Orientation = xlDataField
+End With
+
+With pt.PivotFields("?‡?v / " & "temp")
+    .Orientation = xlDataField
+    .Function = xlSum
+    .Position = 1
+    .Caption = edited_name
+    .NumberFormat = "#,##"
+End With
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 30).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 59).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+results_rng.Find(what:=edited_name).Offset(Month - 2, 5).Copy
+results_rng.Find(what:=edited_name).Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<< GZ???[?X >>>>>>
+results_rng.Find(what:="GZ???[?X").Offset(Month - 2, 5).Copy
+results_rng.Find(what:="GZ???[?X").Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<< GZ???[?X’P‰? >>>>>>
+results_rng.Find(what:="GZ???[?X’P‰?").Offset(Month - 2, 5).Copy
+results_rng.Find(what:="GZ???[?X’P‰?").Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<< ‘i?×GZ???X?“ >>>>>>
+results_rng.Find(what:="‘i?×GZ???X?“").Offset(Month - 2, 5).Copy
+results_rng.Find(what:="‘i?×GZ???X?“").Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<< ?O?O?| >>>>>>
+results_rng.Find(what:="?O?O?|").Offset(Month - 2, 5).Copy
+results_rng.Find(what:="?O?O?|").Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+'<<<<<< ?Y?E >>>>>>
+wks.Range("A1").Activate
+
+Set pvt = wks.PivotTables("SK_PT1")
+For Each pf In pt.CalculatedFields
+    strSource = pf.SourceName
+    strformula = pf.Formula
+    pf.Delete
+Next pf
+
+'rename variables
+target_field = "?Y?E"
+edited_name = "?Y?E"
+
+With pt.PivotFields(target_field)
+    .Orientation = xlDataField
+    .Function = xlSum
+    '.Caption = edited_name
+    .Position = 1
+    .NumberFormat = "#,##"
+End With
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("?o‘i").Visible = True
+    .PivotFields("type").PivotItems("”C?O").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 30).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+With pt
+    .PivotFields("type").PivotItems("ALL").Visible = False
+    .PivotFields("type").PivotItems("”C?O").Visible = True
+    .PivotFields("type").PivotItems("?o‘i").Visible = False
+End With
+
+wks.PivotTables("SK_PT1").DataBodyRange.Copy
+results_rng.Find(what:=edited_name).Offset(1, 59).PasteSpecial Paste:=xlPasteValues
+
+For Each cell In ActiveCell.Range("A1:E12")
+    If cell.Value = 0 Then cell.Clear
+Next
+
+results_rng.Find(what:=edited_name).Offset(Month - 2, 5).Copy
+results_rng.Find(what:=edited_name).Offset(Month - 1, 5).PasteSpecial Paste:=xlPasteFormulas
+
+'ActiveSheet.PivotTables("SK_PT1").PivotFields("type").EnableMultiplePageItems = True
+
+'WSD.Cells(5 + PT.TableRange2.Rows.Count, finalcol + 2).PasteSpecial xlPasteValues
+    
+
+End Sub
+
