@@ -1,0 +1,120 @@
+Sub SK_Results()
+Application.ScreenUpdating = False
+
+Dim rdate, matchdate, tabdate, pwdate, filedir, batfile, sourcefile
+Dim results_rng As Range
+
+'Establish report date variables
+rdate = Application.InputBox(prompt:="Please enter report date (YYYYMM format)", Type:=1)
+    If rdate = "" Then Exit Sub
+
+matchdate = DateSerial(CInt(Left(rdate, 4)), CInt(Mid(rdate, 5, 2)), CInt(1))
+tabdate = CInt(Left(rdate, 4))
+pwdate = CInt(Mid(rdate, 3, 4))
+
+filedir = "C:\Users\400001946\Documents\GZ_MI\Shinki\SK_datafiles"
+batfile = "C:\Users\400001946\Documents\GZ_MI\Shinki\SK_datafiles\SK_filename.bat"
+
+'Transform source datafile
+    'Filename change >>take out FY add month on end
+      Shell batfile & " " & rdate
+      Application.Wait (Now + TimeValue("0:00:05")) 'wait for Windows to change file name
+    
+    'Convert datafile from xls to xlsx
+    Workbooks.Open Password:=pwdate, filename:=filedir & "\??‘§?O?O’P‰????U?\_" & rdate & ".xls"
+    ActiveWorkbook.SaveAs filename:=filedir & "\??‘§?O?O’P‰????U?\_" & rdate & ".xlsx", _
+        FileFormat:=xlOpenXMLWorkbook
+    ActiveWorkbook.Close
+    
+    'Delete xls version
+    On Error Resume Next
+        Kill filedir & "\??‘§?O?O’P‰????U?\_" & rdate & ".xls"
+    On Error GoTo 0
+    
+'Open source file
+sourcefile = "??‘§?O?O’P‰????U?\_" & rdate & ".xlsx"
+
+Workbooks.Open Password:=pwdate, filename:=filedir & "\" & sourcefile
+ActiveWindow.Zoom = 70
+
+'<<<< LOCATE NEW DATA RECORDS >>>>
+Sheets("FY" & tabdate).Range("A1").Offset(0, 4).End(xlDown).Activate
+ActiveCell.Offset(1, 0).Rows("1:1").EntireRow.Find(what:=matchdate).Activate
+
+'Copy & Paste
+'Value 1
+ActiveCell.Offset(1, 0).Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+Set results_rng = Rows("2:2").Find(what:=matchdate)
+results_rng.Offset(1, 0).PasteSpecial Paste:=xlPasteValues
+
+'Value 2
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(3, 0).Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+results_rng.Offset(3, 0).PasteSpecial Paste:=xlPasteValues
+
+'Value 3
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(5, 0).Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+results_rng.Offset(5, 0).PasteSpecial Paste:=xlPasteValues
+
+'Value 4
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(7, 0).Range("a1:A2").Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+results_rng.Offset(7, 0).PasteSpecial Paste:=xlPasteValues
+
+'Value 5
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(12, 0).Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+results_rng.Offset(12, 0).PasteSpecial Paste:=xlPasteValues
+
+'Value 6
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(14, 0).Range("a1:A3").Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+results_rng.Offset(14, 0).PasteSpecial Paste:=xlPasteValues
+
+'Value 7
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(22, 0).Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+results_rng.Offset(22, 0).PasteSpecial Paste:=xlPasteValues
+
+'Value 8
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(24, 0).Range("a1:A3").Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+results_rng.Offset(24, 0).PasteSpecial Paste:=xlPasteValues
+
+'Value 9
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(41, 0).Range("a1:A2").Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+results_rng.Offset(41, 0).PasteSpecial Paste:=xlPasteValues
+
+'Value 10
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(55, 0).Range("a1:A3").Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Results").Activate
+results_rng.Offset(55, 0).PasteSpecial Paste:=xlPasteValues
+
+Workbooks(sourcefile).Close savechanges:=False
+
+End Sub
+
+
+
