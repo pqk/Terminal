@@ -1,0 +1,60 @@
+Sub SK_Reserve()
+Application.ScreenUpdating = False
+
+Dim rdate, matchdate, tabdate, pwdate, filedir, sourcefile
+Dim res_rng As Range
+
+'Establish report date variables
+rdate = Application.InputBox(prompt:="Please enter report date (YYYYMM format)", Type:=1)
+    If rdate = "" Then Exit Sub
+
+matchdate = DateSerial(CInt(Left(rdate, 4)), CInt(Mid(rdate, 5, 2)), CInt(1))
+tabdate = CInt(Left(rdate, 4))
+pwdate = CInt(Mid(rdate, 3, 4))
+
+'MsgBox "matchdate " & matchdate & vbNewLine & "tabdate " & tabdate & vbNewLine & "pwdate " & pwdate
+
+filedir = "C:\Users\400001946\Documents\GZ_MI\Shinki\SK_datafiles"
+
+'Transform source datafile
+    'Convert datafile from xls to xlsx
+    Workbooks.Open Password:=pwdate, filename:=filedir & "\??‘§?O?O???U?\_" & rdate & ".xls"
+    ActiveWorkbook.SaveAs filename:=filedir & "\??‘§?O?O???U?\_" & rdate & ".xlsx", _
+        FileFormat:=xlOpenXMLWorkbook
+    ActiveWorkbook.Close
+    
+    'Delete xls version
+    On Error Resume Next
+        Kill filedir & "\??‘§?O?O???U?\_" & rdate & ".xls"
+    On Error GoTo 0
+    
+'Open source file
+sourcefile = "??‘§?O?O???U?\_" & rdate & ".xlsx"
+
+Workbooks.Open Password:=pwdate, filename:=filedir & "\" & sourcefile
+
+'Locate new data record
+Set res_rng = Columns("B:B").Find(what:="?o“??a", SearchOrder:=xlByRows).Offset(1, 1).Range("A1:L1")
+res_rng.Copy
+res_rng.PasteSpecial Paste:=xlPasteValues
+Selection.Find(what:=matchdate).Activate
+
+'Copy & Past Reserve EOP Balance
+ActiveCell.Offset(2, 0).Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Reserve").Activate
+Columns("A:A").Find(what:=matchdate).Offset(0, 4).Range("A1").Select 'for PROD change to offset(0,4)
+ActiveCell.PasteSpecial Paste:=xlPasteValues
+
+'Copy & Past Actuals
+Workbooks(sourcefile).Sheets("FY" & tabdate).Activate
+ActiveCell.Offset(7, 0).Range("A1:A2").Copy
+
+Workbooks("Shinki_GZ_data.xlsm").Sheets("Reserve").Activate
+Columns("A:A").Find(what:=matchdate).Offset(0, 1).Range("A1").Select 'for PROD change to offset(0,1)
+ActiveCell.PasteSpecial Paste:=xlPasteValues, Transpose:=True
+
+Workbooks(sourcefile).Close savechanges:=False
+
+End Sub
+
