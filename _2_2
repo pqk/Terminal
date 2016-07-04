@@ -1,0 +1,185 @@
+Option Explicit
+
+Dim rdate, pw, filedir, file
+Dim kabarai_cnt, finalcol, finalrow
+Dim rdate_last As String
+Dim srdate As String
+Dim heading_list As Variant
+
+Sub Kabarai_File()
+Dim rng As Range
+'Application.ScreenUpdating = False
+
+'Assign Variables
+rdate = Application.InputBox(prompt:="?n???I“u?t?d“u?I?μ?A‰o?3?￠?B (YYYYMM ?`?R)", Type:=1)
+    If rdate = "" Then Exit Sub
+srdate = rdate 'need string version of rdate in order for VBA to pass an automatic parenthesized variable
+
+If CInt(Mid(rdate, 5, 2)) = 1 Then
+    rdate_last = (CInt(Left(rdate, 4)) - 1) & "12"
+Else: rdate_last = rdate - 1
+End If
+
+pw = "0909"
+filedir = Application.InputBox(prompt:="?3?f?[?^?I?i”[?a?I?t?@?C???I?p?X?d‘S?A“u?I?μ?A‰o?3?￠?B")
+'"C:\Users\400001946\Documents\GZ_MI\SF\Settlement Flash\‰s?\?￠?A?l?A?N?\"
+file = "‰s?\?￠?A?l?A?N?\" & rdate & ".xlsm"
+
+'Open file data
+Workbooks.Open Password:=pw, Filename:=filedir & Application.PathSeparator & file
+Worksheets("Data").Activate
+
+On Error Resume Next
+With ActiveWindow
+    .Zoom = 70
+    .Height = 300
+    .Width = 700
+    .Top = 50
+    .Left = 100
+End With
+
+Selection.AutoFilter 'turn off autofilter
+
+ 'Check # wakai'd during given month
+kabarai_cnt = cells(Rows.Count, 1).End(xlUp).Row - 1
+MsgBox rdate & " Kabarai #: " & kabarai_cnt
+
+finalcol = cells(1, Columns.Count).End(xlToLeft).Column
+
+
+'Prepare data before copying to Masterfile
+Range("A1", cells(kabarai_cnt + 1, finalcol)).Copy
+ActiveWorkbook.Sheets.Add Before:=Worksheets("data")
+ActiveSheet.Name = rdate 'CHANGE delete 1
+ActiveWindow.Zoom = 70
+Range("A1").PasteSpecial Paste:=xlPasteValues
+
+'Copy & Paste into Masterfile CHANGE "2015061" >> rdate
+Workbooks(file).Worksheets(srdate).Copy after:=ThisWorkbook.Worksheets(rdate_last)
+
+Workbooks(file).Close savechanges:=False
+
+'Format data
+cells.Select
+With Selection.Font
+    .Name = "calibri"
+    .Size = 10
+End With
+
+Rows("1:1").Font.Bold = True
+
+cells.EntireColumn.AutoFit
+cells.EntireRow.AutoFit
+ActiveWindow.Zoom = 70
+
+Range("a1").Offset(1, 0).Activate
+ActiveWindow.FreezePanes = True
+
+'Delete unused fields before copying to SUMMARY sheet
+finalcol = cells(1, Columns.Count).End(xlToLeft).Column
+
+Range("A1", cells(kabarai_cnt + 1, finalcol)).Copy
+ActiveWorkbook.Sheets.Add Before:=Worksheets(srdate)
+ActiveSheet.Name = "Temp"
+ActiveWindow.Zoom = 70
+Range("A1").PasteSpecial Paste:=xlPasteValues
+
+'start delete
+Worksheets("Temp").Range("A1").Select
+
+heading_list = Array("no", "serialno", "?a‰d“u", "maxirrl", "seikyu", "kosyo", "kekka", "team", "”C?O/‘i?×")
+
+Do Until ActiveCell.Value = ""
+    
+    If IsInArray(ActiveCell.Value, heading_list) = True Then
+        ActiveCell.Offset(0, 1).Select
+    
+    Else
+        ActiveCell.EntireColumn.Select
+        Selection.Delete Shift:=xlToLeft
+        Selection.End(xlUp).Select
+    End If
+Loop
+'end delete
+
+
+'Copy & Paste to SUMMARY sheet
+finalrow = cells(Rows.Count, 1).End(xlUp).Row
+finalcol = cells(1, Columns.Count).End(xlToLeft).Column
+
+Range("a1", cells(finalrow, finalcol)).Copy
+
+Worksheets("SUMMARY").Activate
+'Selection.AutoFilter 'turn off autofilter
+Range("a1").End(xlDown).Offset(2, 3).PasteSpecial Paste:=xlPasteValues
+
+'Fill in Cells
+Range(ActiveCell.Offset(0, -3), ActiveCell.End(xlDown).Offset(0, -3)).Value = rdate 'CHANGE from 201507 to variable rdate
+Range(ActiveCell.Offset(0, -2), ActiveCell.End(xlDown).Offset(0, -2)).FormulaR1C1 = "=DATE(LEFT(RC[-1],4),RIGHT(RC[-1],2),1)"
+
+ActiveCell.Offset(-2, -1).Copy
+Range(ActiveCell.Offset(0, -1), ActiveCell.End(xlDown).Offset(0, -1)).PasteSpecial Paste:=xlPasteFormulas
+
+'Align Fields
+ActiveCell.End(xlToRight).Offset(1, 1).Activate
+Range(ActiveCell, ActiveCell.Offset(kabarai_cnt - 1, 0)).Select
+Selection.FormulaR1C1 = "=RC[-2]-0"
+Selection.Copy
+ActiveCell.Offset(0, -2).PasteSpecial Paste:=xlPasteValues
+
+'Check manual N/NL calc w/ field values
+ActiveCell.End(xlToRight).Activate
+Set rng = Range(ActiveCell, ActiveCell.Offset(kabarai_cnt - 1, 0))
+rng.FormulaR1C1 = "=IF(AND(RC[-10]=""Liti"",OR(RC[-1]=""‘i?×"",RC[-1]=""?U?a?I”C"")),0,IF(AND(RC[-10]=""Nonliti"",RC[-1]=""”C?O""),0,1))"  'MUST enclose text in double quotes!!
+
+MsgBox "Mismatches: " & Application.Evaluate("=count(rng)") 'where 0 is TRUE and 1 is FALSE
+rng.Delete
+
+'delete preexisting NL/L field
+ActiveCell.Offset(-1, -1).Activate
+Range(ActiveCell, ActiveCell.End(xlDown)).Delete Shift:=xlToLeft
+    
+'Mutiply maxirrl , seikyu , kekka columns by -1
+ActiveCell.Offset(-1, -1).Activate
+ActiveCell.Value = -1
+ActiveCell.Copy
+
+ActiveCell.Offset(1, -1).EntireRow.Find(what:="maxirrl", SearchOrder:=xlByColumns).Activate
+ActiveCell.Offset(1, 0).Activate
+Range(ActiveCell, ActiveCell.End(xlDown)).PasteSpecial Paste:=xlPasteAll, Operation:=xlMultiply
+
+ActiveCell.Offset(-1, 0).EntireRow.Find(what:="seikyu", SearchOrder:=xlByColumns).Activate
+ActiveCell.Offset(1, 0).Activate
+Range(ActiveCell, ActiveCell.End(xlDown)).PasteSpecial Paste:=xlPasteAll, Operation:=xlMultiply
+
+ActiveCell.Offset(-1, 0).EntireRow.Find(what:="kekka", SearchOrder:=xlByColumns).Activate
+ActiveCell.Offset(1, 0).Activate
+Range(ActiveCell, ActiveCell.End(xlDown)).PasteSpecial Paste:=xlPasteAll, Operation:=xlMultiply
+
+'concatenate w/ above dataset
+ActiveCell.Offset(-2, 0).EntireRow.Delete
+ActiveCell.Offset(-2, 0).EntireRow.Delete
+
+'delete temp wks
+Application.DisplayAlerts = False
+Worksheets("Temp").Delete
+Application.DisplayAlerts = True
+
+'add new data variables to metadata
+Worksheets("metadata").Activate
+Range("a1").End(xlToRight).Offset(0, 1).Activate
+ActiveCell.Value = rdate
+
+Worksheets(srdate).Range("a1", cells(1, Columns.Count).End(xlToLeft)).Copy
+Range("a1").End(xlToRight).Offset(1, 0).PasteSpecial Paste:=xlPasteValues, Transpose:=True
+Selection.Font.Bold = False
+
+MsgBox "?a‰d‰s?\?I?A?N?f?[?^?a?{?}?X?^?[?e?[?u???E’C‰A?μ?U?μ???B" & vbNewLine & "Period: " & rdate & vbNewLine & "Count: " & kabarai_cnt
+
+End Sub
+
+Public Function IsInArray(stringToBeFound As String, arr As Variant) As Boolean
+    IsInArray = (UBound(Filter(arr, stringToBeFound)) > -1) 'zero-based array: -1, one-based: 0
+End Function
+
+
