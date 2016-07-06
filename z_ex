@@ -1,0 +1,318 @@
+/*---- Input ----*/
+libname	master	"/share/world/master"			;
+libname	gray	"/share/gray"			;
+libname	rpa	"/share/sfrisk/rpa" 				;
+libname	l1	"/share/sfrisk/legal/1_eligible"	;
+libname	l2	"/share/sfrisk/legal/2_li" 		;
+libname	l4	"/share/sfrisk/legal/4_inventory"	;
+libname	l5	"/share/sfrisk/legal/5_kabarai"		;
+libname	l6	"/share/sfrisk/legal/6_gzreserve"	;
+
+%include 		"/odd/lib/sf-dwh.key"		;
+
+
+/***** AT *****/
+
+data _null_ ;
+  s_cut = intck('MONTH','31Jan2000'd,today()) ;
+  call symput('s_cut',compress(s_cut));
+run;
+%put %nrstr(&s_cut =) &s_cut ;
+
+data _null_ ;
+  e_cut = intck('MONTH','31Jan2000'd,today()) ;
+  call symput('e_cut',compress(e_cut));
+run;
+%put %nrstr(&e_cut =) &e_cut ;
+
+
+/*** Initial Date ***/
+%let ST="01jan2000"d;
+data _null_ ;
+        call symput ("n",intck("month",&ST-1,intnx('day',intnx('month',today(),0),-1)));
+run;
+/***** Check *****/
+%put %nrstr(&n =) &n ;
+data _null_;
+	%macro YM1 ;
+		%do i= 0 %to &n ;
+			call symput("yymm&i" ,put(intnx("month",&ST-1,%eval(&i),"end"),yymmdd4.));
+		%end;
+	%mend ;
+	%YM1 ;
+run;
+%macro YM2 ;
+	%do i= 0 %to &n ;
+		%put yymm&i = &&yymm&i;
+	%end ;
+%mend;
+%YM2 ;
+
+/***** MT *****/
+%let	s_cut= 105 ; /*CHANGE*/
+%let	e_cut= 191 ; /*CHANGE*/
+
+/* %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% */
+/* %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% */
+/* %%%%%%%%%%%%%%%%%%%%%%%%%%% 1.Eligible %%%%%%%%%%%%%%%%%%%%%%%%%%%%%% */
+/* %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% */
+/* %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% */
+
+%macro expo_Mod1 ;
+
+%do i = &s_cut %to &e_cut ;
+
+/*ファイル解凍*/
+ %if &i>=107 and &i<145 %then %do; /* >>既存解凍ファイルの調整*/
+
+	X "cd /share/sfrisk/legal/1_eligible/";
+	X "gzip -d cust&&yymm&i..sas7bdat";
+ %end
+
+ %if &i>=106 and &i<189 %then %do;
+	X "cd /share/gray/";
+	X "gzip d segm&&yymm&i..sas7bdat";
+ %end
+
+	%let	j=%eval(&i-1) ;
+
+	%if	  &&yymm&i<=0809	%then	%do ;
+			
+		data	segm&&yymm&i ;
+		set	gray.segm0809(keep=	serialno se004	) ;
+		run ;
+
+	%end ;
+		
+	%else %do ;
+
+		data	r ;
+		set	rpa.port_seg_&&yymm&i
+			(keep=	serialno gz_seg rename=(gz_seg=se004)) ;
+		where	se004='R' ;
+		run ;
+
+		data	segm&&yymm&i ;
+		merge	gray.segm&&yymm&j(in=a	keep=	serialno se004)
+				r(in=b	keep=serialno se004) ;
+		by	serialno ;
+		if	a ;
+		run ;
+			
+	%end ;
+%end ;
+
+
+data	a2(keep=serialno) ;
+set	segm&&yymm&e_cut ;
+where	se004='A-2-2' ;
+run ;
+
+%do i = 105 %to &e_cut ;
+
+	data	loan&&yymm&i(keep=serialno) ;
+	set	risklib.loan&&yymm&i(keep = serialno lo&&yymm&i..06 lo&&yymm&i..07 lo&&yymm&i..09) ;
+
+	where	lo&&yymm&i..06 >= mdy(%substr(&&yymm&i,3,2),01,%substr(&&yymm&i,1,2))
+		and
+		lo&&yymm&i..06 <= intnx('day',intnx('month', mdy(%substr(&&yymm&i,3,2),01,%substr(&&yymm&i,1,2))   ,1),-1)
+		and
+		lo&&yymm&i..07 = 0
+		and
+		lo&&yymm&i..09 ne 51 ;
+	run ;
+
+	proc sort data=loan&&yymm&i ;by serialno ;run ;
+
+	data	a2_loan&&yymm&i ;
+	merge	a2	(in=a)
+			loan&&yymm&i(in=b) ;
+	by	serialno ;
+	if	a and b ;
+	run ;
+
+%end ;
+
+%do i = &s_cut %to &e_cut ;
+
+%let	j=%eval(&i-1) ;
+
+	%if	&&yymm&i=&&yymm&e_cut	%then	%do ;
+		%let	s=%eval(&i-1) ;
+	%end ;
+	%else %do ;
+		%let	s=&i ;
+	%end ;
+
+
+	%if	&&yymm&i>=0809 %then	%do ;
+		data	a2_loan ;
+		set
+			%do k = 105 %to &i ;
+			a2_loan&&yymm&k
+			%end ;
+			;
+		run ;
+		proc sort data=a2_loan nodupkey ;	by serialno ;	run  ;
+
+		data	bifur(keep=serialno se006) ;
+		set	gray.segm&&yymm&s(keep=serialno se004 se006) ;
+		where	se004 in('B-1','B-2')
+			and	se006 in(1,2) ;
+		run ;
+		
+	%end ;
+	
+
+	data	cust;
+	merge	l1.cust&&yymm&i	(in=a)
+		master.irrl_balance&&yymm&i	(in = i keep =	serialno irrl_balance	)	/* 20130618追加 */
+			l6.irrl_mortgage(in = m	keep=serialno pl_irrl_balance	)
+
+		%if	&&yymm&i>=0809 %then	%do ;
+		a2_loan	(in = l keep=serialno			)
+		bifur	(in = f	keep=serialno se006		)
+		%end ;
+		;
+	by	serialno ;
+	if	a ;
+
+	length		trans_flag	$20. ;
+
+	%if	&&yymm&i>=0809 %then	%do ;
+		if	l=1	then	loan=1 ;
+		else			loan=0 ;
+
+		if	gz_seg in('A-2-2') and loan=1			then	gz_seg='A-2-2-NL'	;
+		else if	gz_seg in('B-1','B-2') and se006 in(1,2)	then	gz_seg=compress(gz_seg||se006) ;
+		else								gz_seg=gz_seg		;
+
+	%end ;
+
+	/***** PL Transaction *****/
+	if	m=1			then	pl_trans=1 ;
+	else					pl_trans=0 ;
+	
+	/***** PL IRRL Flag *****/
+	if	pl_irrl_balance<0	and pl_irrl_balance ne .	then	pl_irrl_flag='-';
+	else if	pl_irrl_balance=0	and pl_irrl_balance ne .	then	pl_irrl_flag='0';
+	else if	pl_irrl_balance>0	and pl_irrl_balance ne .	then	pl_irrl_flag='+';
+	else									pl_irrl_flag='NA';
+
+	/*****  IRRL Flag  *****/
+	if	irrl_balance<0	and irrl_balance ne .	then	irrl_flag ='-';
+	else if	irrl_balance=0	and irrl_balance ne .	then	irrl_flag ='0';
+	else if	irrl_balance>0	and irrl_balance ne .	then	irrl_flag ='+';
+	else							irrl_flag ='NA';
+
+
+	/***** Pre_Post Flag(20130520) *****/
+	if	c042 = '31Dec9999'd or c042 = .	then	trans_flag = 'NA' ;
+	else if	c042<='31Dec1989'd and c042 ^= .	then	trans_flag = 'pre90' ;
+	else if	c042<='30Sep1993'd and c042 ^= .	then	trans_flag = 'pre93' ;
+	else						trans_flag = 'post93' ;
+	
+/*** START PK MODs***/
+	proc sort data=cust presorted;by serialno;run;
+	
+	/**Create base data set and limit all future monthly datasets to same serialno**/ 
+	%if &i=105 %then %do;
+		data Cust Cust&&yymm&i;
+		set	cust(where=(portfolio In("AF","PL","WC","XS") and book in("OB","PO","WO","PO5Y") and 
+		legal_flag=0 and gz_seg not in("New_W","W") and eligible_flag=1));
+		
+		if substr(gz_seg,1,3)='A-1' or gz_seg='R' then gz_seg1='A1R';
+			else if substr(gz_seg,1,3)='A-2' then gz_seg1='A2';
+			else if substr(gz_seg,1,3)='B-1' or substr(gz_seg,1,3)='B-2' then gz_seg1='B';
+			else gz_seg1=gz_seg;
+			run ;
+	%end;
+	
+	%else %do; /*&s_cut MUST be 105 otherwise ERROR*/
+			
+		data cust;
+		merge Cust&&yymm&s_cut(in=t1 keep=serialno)
+			  cust(where=(portfolio In("AF","PL","WC","XS") and book in("OB","PO","WO","PO5Y") and 
+						  legal_flag=0 and gz_seg not in("New_W","W") and eligible_flag=1));
+		by serialno;
+		if t1;
+		
+		if missing(book) then delete; /* OB/PO/WO >> LI -OR- PO > SOL */
+		
+		if substr(gz_seg,1,3)='A-1' or gz_seg="R" then gz_seg1='A1R';
+			else if substr(gz_seg,1,3)='A-2' then gz_seg1='A2';
+			else if substr(gz_seg,1,3)='B-1' or substr(gz_seg,1,3)='B-2' then gz_seg1='B';
+			else gz_seg1=gz_seg;
+		run;
+	%end;
+
+
+	proc sql ;
+	create table sum_eligible&&yymm&i as
+	select
+		c003 as YM format=YYMMDD10.,
+		book,
+		gz_seg1,
+		gz_seg,
+		irrl_flag ,
+		count(serialno)			as count,
+		sum(irrl_balance/1000000)		as irrl_MM,
+		sum(ac28/1000000)		as mcs_MM
+	from
+		cust
+	group by
+		YM,
+		book,
+		gz_seg1,		
+		gz_seg,
+		irrl_flag
+		;
+	quit ;
+
+
+/*ファイル圧縮*/
+ %if &i>=107 and &i<145 %then %do;
+	X "cd /share/sfrisk/legal/1_eligible/";
+	X "gzip cust&&yymm&i..sas7bdat";
+ %end
+
+ %if &i>=106 and &i<189 %then %do;
+	X "cd /share/gray/";
+	X "gzip segm&&yymm&i..sas7bdat";
+ %end
+
+
+/*** END PK MODs***/
+%end ;
+
+
+data	sum_eligible ;
+set
+%do i = &s_cut %to &e_cut ;
+	sum_eligible&&yymm&i
+%end ;
+;
+run ;
+
+%mend ;
+%expo_Mod1
+
+
+
+
+%macro drop
+
+%do i = &s_cut %to &e_cut;
+proc sql;
+drop table loan&&yymm&i,a2_loan&&yymm&i;quit;
+%end ;
+
+%mend drop
+%drop
+
+
+
+proc export data = sum_eligible
+OUTFILE= "~/Eligible_Mod.csv"
+dbms = csv replace ;
+run ;
